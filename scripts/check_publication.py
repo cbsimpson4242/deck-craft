@@ -5,6 +5,7 @@ Run from the repository root with Python 3.
 """
 from pathlib import Path
 import base64
+import hashlib
 import json
 import re
 import subprocess
@@ -38,11 +39,13 @@ for path in paths:
                 if result.returncode:
                     errors.append(f'{path.name}: JavaScript syntax failure')
 rounds = [
-    ('designs/manifest.json', 'designs/deck-craft-comparison.html', 'UI CONCEPT'),
-    ('designs/round-two/manifest.json', 'designs/round-two/deck-craft-studies-02.html', 'VISUAL PROTOTYPE'),
+    ('designs/manifest.json', 'designs/deck-craft-comparison.html', 'UI CONCEPT', None),
+    ('designs/round-two/manifest.json', 'designs/round-two/deck-craft-studies-02.html', 'VISUAL PROTOTYPE', None),
+    ('designs/round-three/manifest.json', 'designs/round-three/deck-craft-refinements-03.html', 'VISUAL PROTOTYPE', 'designs/round-three/references.json'),
 ]
 checked_designs = 0
-for manifest_path, bundle_path, label in rounds:
+checked_references = 0
+for manifest_path, bundle_path, label, reference_path in rounds:
     manifest = json.loads((ROOT / manifest_path).read_text())
     assert len(manifest) == 5
     assert len({d['path'] for d in manifest}) == 5
@@ -50,15 +53,25 @@ for manifest_path, bundle_path, label in rounds:
     match = re.search(r'<script id="design-data" type="application/json">(.*?)</script>', bundle, re.S)
     assert match is not None, 'Missing embedded design manifest'
     embedded = json.loads(match[1])
-    assert len(embedded) == 5
-    assert [d['path'] for d in embedded] == [d['path'] for d in manifest]
+    references = json.loads((ROOT / reference_path).read_text()) if reference_path else []
+    if reference_path:
+        assert len(references) == 2
+        assert all(d['role'] == 'reference' for d in references)
+        assert all(d['role'] == 'new' for d in manifest)
+    assert len(embedded) == len(manifest) + len(references)
+    assert [d['path'] for d in embedded] == [d['path'] for d in manifest + references]
     for item in embedded:
         decoded = base64.b64decode(item['html'])
         assert decoded == (ROOT / item['path']).read_bytes(), item['path']
         assert label in decoded.decode()
-    checked_designs += len(embedded)
+        if 'sha256' in item:
+            assert hashlib.sha256(decoded).hexdigest() == item['sha256']
+    for ref in references:
+        assert hashlib.sha256((ROOT / ref['path']).read_bytes()).hexdigest() == ref['sha256']
+    checked_designs += len(manifest)
+    checked_references += len(references)
 ET.parse(ROOT / 'assets/deck-craft.svg')
 assert json.loads((ROOT / 't3.json').read_text())['iconPath'] == 'assets/deck-craft.svg'
 if errors:
     raise SystemExit('\n'.join(errors))
-print(f'PASS: {len(paths)} files; {checked_designs} designs across {len(rounds)} rounds; exact embedded bytes; SVG, inline JS and privacy patterns checked. Manual review still required.')
+print(f'PASS: {len(paths)} files; {checked_designs} designs across {len(rounds)} rounds plus {checked_references} unchanged references; exact embedded bytes; SVG, inline JS and privacy patterns checked. Manual review still required.')

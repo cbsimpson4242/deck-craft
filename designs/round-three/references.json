@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Signal / Round 02",
+    "slug": "reference-signal",
+    "author": "Hermes",
+    "role": "reference",
+    "path": "designs/round-two/signal/index.html",
+    "sha256": "ab3b49badefc37daaf820638e43556238c8b9e288c37b2a219d2d64f66b40a1c",
+    "thesis": "Unchanged selected reference.",
+    "description": "The original Signal you liked, preserved byte-for-byte."
+  },
+  {
+    "name": "Studio / Round 02",
+    "slug": "reference-studio",
+    "author": "Hermes",
+    "role": "reference",
+    "path": "designs/round-two/studio/index.html",
+    "sha256": "4e47022a098ab8264004c65b41837e5cb92c2b0db59ceb6e703a78e5eb83e608",
+    "thesis": "Unchanged selected reference.",
+    "description": "The original Studio you liked, preserved byte-for-byte."
+  }
+]

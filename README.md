@@ -8,17 +8,17 @@ An open-source DJ software project built around professional workflows, reliable
 
 ## Explore the designs
 
-Download and open [Design Studies / Round 02](designs/round-two/deck-craft-studies-02.html) in a browser. It contains five self-contained, interactive DJ workspace studies. No server, dependencies, account, music files or network access are needed. Individual studies live in `designs/round-two/`.
+Download and open [Signal + Studio / Round 03](designs/round-three/deck-craft-refinements-03.html) in a browser. This round contains **five new refinements** derived from the selected Signal and Studio directions, plus their **two unchanged Round 02 references**. Everything is self-contained and offline.
 
-1. **Obsidian** — a two-deck club console with stacked waveforms and a central mixer.
-2. **Signal** — a technical, waveform-first workspace with side-mounted mixing controls.
-3. **Alloy** — a light, mineral-toned studio instrument.
-4. **Nocturne** — mirrored platters around a vertical phrase display.
-5. **Studio** — a persistent library beside a four-deck performance workspace.
+1. **Signal One** — refines Signal's side mixer, paired waveforms and visible cue banks.
+2. **Signal Wide** — expands the alignment display and moves mixing to a lower dock.
+3. **Studio Grid** — refines Studio's library-left, four-deck-right workspace.
+4. **Studio Linear** — keeps the persistent collection and presents four decks as horizontal lanes.
+5. **Studio Sync** — combines Signal's pair-alignment display with Studio's collection and four decks.
 
-The comparison includes fit-to-screen, full-size/pan, phone layout, focus mode and individual downloads. These are proposals, not an approved final design. See the [round-two design brief](designs/round-two/README.md).
+The five numbered tabs are new proposals. The **Signal 02** and **Studio 02** buttons load the original selected studies byte-for-byte. Use fit-to-screen, full-size/pan, phone layout, focus mode and individual downloads. See the [round-three design brief](designs/round-three/README.md).
 
-The [first-round comparison](designs/deck-craft-comparison.html) is retained as historical exploration; that direction was rejected and is not the current recommendation.
+The [Round 02 exploration](designs/round-two/deck-craft-studies-02.html) remains intact. The [first-round comparison](designs/deck-craft-comparison.html) is historical only; that direction was rejected.
 
 All track names, artists, waveforms, times and library entries are synthetic demonstration fixtures. Play, cue, sync and pads only change prototype state; they do not produce or process audio.
 

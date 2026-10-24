@@ -1,0 +1,67 @@
+[
+  {
+    "name": "Signal One",
+    "slug": "signal-one",
+    "author": "Hermes",
+    "role": "new",
+    "number": 1,
+    "parent": "Signal",
+    "path": "designs/round-three/signal-one/index.html",
+    "thesis": "Signal, with a more deliberate hierarchy.",
+    "description": "Keeps the accepted side mixer and paired waveforms. Refines typography, deck controls, cue ribbons and collection readability.",
+    "tradeoff": "Closest refinement to the selected Signal; keeps both cue banks visible.",
+    "sha256": "248075d1e5efc934b70ec366a8fef3a110d5d385fc4262fe3099e8d87c02ea49"
+  },
+  {
+    "name": "Signal Wide",
+    "slug": "signal-wide",
+    "author": "Hermes",
+    "role": "new",
+    "number": 2,
+    "parent": "Signal",
+    "path": "designs/round-three/signal-wide/index.html",
+    "thesis": "More room for the transition.",
+    "description": "Keeps Signal\u2019s technical language, expands the alignment display and moves mixing to a lower dock. Cue banks are available on demand.",
+    "tradeoff": "More waveform space, less persistent EQ; full mixer opens on demand.",
+    "sha256": "f4ee8ae413a254d74802b62ef13d77b3e24209a7e762f8383e8fecd8ae4257c5"
+  },
+  {
+    "name": "Studio Grid",
+    "slug": "studio-grid",
+    "author": "Hermes",
+    "role": "new",
+    "number": 3,
+    "parent": "Studio",
+    "path": "designs/round-three/studio-grid/index.html",
+    "thesis": "A more legible four-deck workspace.",
+    "description": "Preserves Studio\u2019s collection-left, four-deck-right layout with stronger track hierarchy, consistent control sizes and quieter framing.",
+    "tradeoff": "Closest refinement to the selected Studio; all four sources and their cue pads stay visible.",
+    "sha256": "5997d0c3097147fee6684d2f4f1dc584916b39559c17b94e5b2dfcb9d9a4a89c"
+  },
+  {
+    "name": "Studio Linear",
+    "slug": "studio-linear",
+    "author": "Hermes",
+    "role": "new",
+    "number": 4,
+    "parent": "Studio",
+    "path": "designs/round-three/studio-linear/index.html",
+    "thesis": "Four sources. Four clear lanes.",
+    "description": "Keeps Studio\u2019s persistent collection, but presents decks as horizontal lanes. Waveforms and transport read across; hot cues expand per deck.",
+    "tradeoff": "Improves scan order and long track titles; cue banks are collapsed until needed.",
+    "sha256": "532f63772024b9a2cfefdfa7075e96d246555e88e4edc5e4f297715bdf47ec40"
+  },
+  {
+    "name": "Studio Sync",
+    "slug": "studio-sync",
+    "author": "Hermes",
+    "role": "new",
+    "number": 5,
+    "parent": "Signal + Studio",
+    "path": "designs/round-three/studio-sync/index.html",
+    "thesis": "Signal alignment meets Studio workflow.",
+    "description": "Combines a shared phrase-alignment display with Studio\u2019s persistent collection and four-deck workspace. Switch between the A/B and C/D waveform pairs.",
+    "tradeoff": "The hybrid: shared pair alignment plus all four deck controls; less space per individual overview.",
+    "sha256": "9f7b0f79c35ec86b71b3a13a7c97d9c7ccaacb4822fc81dc2016a52e27ca1de1"
+  }
+]
