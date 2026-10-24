@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Club Standard",
+    "slug": "club-standard",
+    "author": "Hermes",
+    "path": "sketches/001-club-standard/index.html",
+    "strength": "Familiarity and fast scanning",
+    "tradeoff": "Dense on narrow screens"
+  },
+  {
+    "name": "Performance Lab",
+    "slug": "performance-lab",
+    "author": "Hermes",
+    "path": "sketches/002-performance-lab/index.html",
+    "strength": "Layering and performance access",
+    "tradeoff": "More cognitive load; less library space"
+  },
+  {
+    "name": "Library First",
+    "slug": "library-first",
+    "author": "Hermes",
+    "path": "sketches/003-library-first/index.html",
+    "strength": "Track preparation and search",
+    "tradeoff": "Only one audition deck; not a live mixing layout"
+  },
+  {
+    "name": "Minimal Precision",
+    "slug": "minimal-precision",
+    "author": "Hermes",
+    "path": "sketches/004-minimal-precision/index.html",
+    "strength": "Low distraction and legibility",
+    "tradeoff": "Performance pads and EQ are not exposed"
+  },
+  {
+    "name": "Hardware Console",
+    "slug": "hardware-console",
+    "author": "Hermes",
+    "path": "sketches/005-hardware-console/index.html",
+    "strength": "Tactile hierarchy and booth feel",
+    "tradeoff": "Platters consume waveform and library space"
+  }
+]

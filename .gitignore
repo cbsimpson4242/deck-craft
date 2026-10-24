@@ -1,0 +1,26 @@
+# Never commit credentials or local runtime state
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.log
+*.sqlite*
+*.db
+node_modules/
+dist/
+build/
+coverage/
+.local/
+.DS_Store
+# Personal libraries and audio recordings
+music/
+recordings/
+*.mp3
+*.wav
+*.flac
+*.aiff
+*.m4a
