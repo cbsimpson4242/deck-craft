@@ -1,0 +1,47 @@
+[
+  {
+    "name": "Obsidian",
+    "slug": "obsidian",
+    "author": "Hermes",
+    "thesis": "A club-ready two-deck console.",
+    "description": "Stacked phrase-alignment waveforms, engraved mixer controls, vinyl landmarks and a full collection below.",
+    "tradeoff": "Strongest all-round starting point; familiar without copying a product.",
+    "path": "designs/round-two/obsidian/index.html"
+  },
+  {
+    "name": "Signal",
+    "slug": "signal",
+    "author": "Hermes",
+    "thesis": "Time alignment, front and center.",
+    "description": "A technical, waveform-first workspace. Large aligned transients replace platter graphics, leaving more space for the library.",
+    "tradeoff": "Best for beatmatching and dense sets; deliberately less tactile.",
+    "path": "designs/round-two/signal/index.html"
+  },
+  {
+    "name": "Alloy",
+    "slug": "alloy",
+    "author": "Hermes",
+    "thesis": "A calibrated studio instrument.",
+    "description": "Warm mineral surfaces, olive controls and clean type. A daylight alternative to the usual black booth.",
+    "tradeoff": "Clear preparation and long-session legibility; intentionally not a nightclub palette.",
+    "path": "designs/round-two/alloy/index.html"
+  },
+  {
+    "name": "Nocturne",
+    "slug": "nocturne",
+    "author": "Hermes",
+    "thesis": "A mirrored, after-dark performance surface.",
+    "description": "Oversized platters frame a vertical phrase display. Quiet violet and rose identify the decks without lighting the entire screen.",
+    "tradeoff": "Most expressive booth identity; vertical alignment replaces the usual horizontal overview.",
+    "path": "designs/round-two/nocturne/index.html"
+  },
+  {
+    "name": "Studio",
+    "slug": "studio",
+    "author": "Hermes",
+    "thesis": "Your collection and four decks, together.",
+    "description": "A persistent library occupies the left third while a compact four-deck workspace and effects live on the right.",
+    "tradeoff": "Best for preparation during layered sets; higher information density.",
+    "path": "designs/round-two/studio/index.html"
+  }
+]

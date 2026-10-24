@@ -37,19 +37,28 @@ for path in paths:
                 result = subprocess.run(['node', '--check', tmp.name], capture_output=True, text=True)
                 if result.returncode:
                     errors.append(f'{path.name}: JavaScript syntax failure')
-manifest = json.loads((ROOT / 'designs/manifest.json').read_text())
-assert len(manifest) == 5
-assert len({d['path'] for d in manifest}) == 5
-bundle = (ROOT / 'designs/deck-craft-comparison.html').read_text()
-match = re.search(r'<script id="design-data" type="application/json">(.*?)</script>', bundle, re.S)
-assert match is not None, 'Missing embedded design manifest'
-embedded = json.loads(match[1])
-assert len(embedded) == 5
-for item in embedded:
-    assert base64.b64decode(item['html']) == (ROOT / item['path']).read_bytes(), item['path']
-    assert 'UI CONCEPT' in base64.b64decode(item['html']).decode()
+rounds = [
+    ('designs/manifest.json', 'designs/deck-craft-comparison.html', 'UI CONCEPT'),
+    ('designs/round-two/manifest.json', 'designs/round-two/deck-craft-studies-02.html', 'VISUAL PROTOTYPE'),
+]
+checked_designs = 0
+for manifest_path, bundle_path, label in rounds:
+    manifest = json.loads((ROOT / manifest_path).read_text())
+    assert len(manifest) == 5
+    assert len({d['path'] for d in manifest}) == 5
+    bundle = (ROOT / bundle_path).read_text()
+    match = re.search(r'<script id="design-data" type="application/json">(.*?)</script>', bundle, re.S)
+    assert match is not None, 'Missing embedded design manifest'
+    embedded = json.loads(match[1])
+    assert len(embedded) == 5
+    assert [d['path'] for d in embedded] == [d['path'] for d in manifest]
+    for item in embedded:
+        decoded = base64.b64decode(item['html'])
+        assert decoded == (ROOT / item['path']).read_bytes(), item['path']
+        assert label in decoded.decode()
+    checked_designs += len(embedded)
 ET.parse(ROOT / 'assets/deck-craft.svg')
 assert json.loads((ROOT / 't3.json').read_text())['iconPath'] == 'assets/deck-craft.svg'
 if errors:
     raise SystemExit('\n'.join(errors))
-print(f'PASS: {len(paths)} files; 5 unique designs; exact embedded bytes; SVG, inline JS and privacy patterns checked. Manual review still required.')
+print(f'PASS: {len(paths)} files; {checked_designs} designs across {len(rounds)} rounds; exact embedded bytes; SVG, inline JS and privacy patterns checked. Manual review still required.')

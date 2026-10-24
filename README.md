@@ -8,13 +8,17 @@ An open-source DJ software project built around professional workflows, reliable
 
 ## Explore the designs
 
-Download and open [the portable comparison](designs/deck-craft-comparison.html) in a browser. It contains five complete offline, interactive design prototypes. No server, dependencies, account, music files or network access are needed. Individual designs live in `sketches/`.
+Download and open [Design Studies / Round 02](designs/round-two/deck-craft-studies-02.html) in a browser. It contains five self-contained, interactive DJ workspace studies. No server, dependencies, account, music files or network access are needed. Individual studies live in `designs/round-two/`.
 
-1. Club Standard — familiar dual-deck mixing.
-2. Performance Lab — four decks and performance tools.
-3. Library First — preparation and collection management.
-4. Minimal Precision — focused, stripped-back mixing.
-5. Hardware Console — equipment-inspired tactile controls.
+1. **Obsidian** — a two-deck club console with stacked waveforms and a central mixer.
+2. **Signal** — a technical, waveform-first workspace with side-mounted mixing controls.
+3. **Alloy** — a light, mineral-toned studio instrument.
+4. **Nocturne** — mirrored platters around a vertical phrase display.
+5. **Studio** — a persistent library beside a four-deck performance workspace.
+
+The comparison includes fit-to-screen, full-size/pan, phone layout, focus mode and individual downloads. These are proposals, not an approved final design. See the [round-two design brief](designs/round-two/README.md).
+
+The [first-round comparison](designs/deck-craft-comparison.html) is retained as historical exploration; that direction was rejected and is not the current recommendation.
 
 All track names, artists, waveforms, times and library entries are synthetic demonstration fixtures. Play, cue, sync and pads only change prototype state; they do not produce or process audio.
 
