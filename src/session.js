@@ -19,6 +19,21 @@ export function createSession() {
 /** One semantic session. A layout transition changes presentation only. */
 export function reduceSession(state,action) {
   if (!object(action)) return state;
+  if(action.type==='native-clock') {
+    const snap=action.snapshot;if(!snap||typeof snap.ready!=='boolean'||!Array.isArray(snap.decks))return state;
+    const decks={...state.decks};let changed=false;
+    for(const id of DECK_IDS){const old=decks[id],native=snap.decks.find(d=>d.id===id);let next=old;
+      if((!snap.ready||(native&&native.trackId!==old.trackId))&&old.playing)next={...old,playing:false};
+      else if(snap.ready&&native&&native.trackId===old.trackId&&trackById(old.trackId)?.local&&Number.isFinite(native.position)&&typeof native.playing==='boolean'){
+        const position=clamp(native.position,0,trackById(old.trackId).duration);
+        if(position!==old.position||native.playing!==old.playing)next={...old,position,playing:native.playing};
+      }
+      if(snap.ready&&native&&finite(native.level)&&native.level>=0&&native.level<=100&&native.level!==next.level)next={...next,level:native.level};
+      if(next!==old){decks[id]=next;changed=true;}
+    }
+    const mixer=snap.ready&&finite(snap.crossfader)&&snap.crossfader>=0&&snap.crossfader<=100&&snap.crossfader!==state.mixer.crossfader?{...state.mixer,crossfader:snap.crossfader}:state.mixer;
+    return changed||mixer!==state.mixer?{...state,decks,mixer}:state;
+  }
   if (action.type === 'layout') return validLayout(action.value) && action.value !== state.layout ? {...state,layout:action.value} : state;
   if (action.type === 'mode') return ['perform','prepare'].includes(action.value) ? {...state,mode:action.value} : state;
   if (action.type === 'pair') return ['ab','cd'].includes(action.value) ? {...state,pair:action.value} : state;
@@ -37,7 +52,7 @@ export function reduceSession(state,action) {
   const current=state.decks[action.deck]; let next;
   if (action.type === 'load') {
     const track=trackById(action.trackId); if(!track) return state;
-    next={...current,trackId:track.id,position:0,playing:false,sync:false,cues:[0,48,136,208].map(value=>Math.min(value,track.duration))};
+    next={...current,trackId:track.id,position:0,playing:false,sync:false,cues:(track.local?[0,0,0,0]:[0,48,136,208]).map(value=>Math.min(value,track.duration))};
   } else if(action.type === 'cue') {
     next={...current,position:0,playing:false};
   } else if(action.type==='setCue'||action.type==='hotCue') {

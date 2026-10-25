@@ -21,4 +21,12 @@ export const TRACKS = Object.freeze([
   { id:'night-service', title:'Night Service', artist:'North Circuit', bpm:126, key:'10A', duration:342, genre:'Tech House', color:'#a68a8e' },
   { id:'half-remembered', title:'Half Remembered', artist:'Field Theory', bpm:125, key:'9A', duration:406, genre:'Minimal', color:'#92ae99' }
 ]);
-export const trackById = id => TRACKS.find(track => track.id === id);
+const localTracks = new Map();
+export const allTracks = () => [...TRACKS,...localTracks.values()];
+export function registerLocalTrack(track) {
+ if(!track || !/^local-[0-9a-f-]{36}$/.test(track.id) || typeof track.title!=='string' || !Number.isFinite(track.duration) || track.duration<=0 || track.duration>7200)throw Error('Invalid local track');
+ const peaks=Array.isArray(track.peaks)&&track.peaks.length===512&&track.peaks.every(n=>Number.isFinite(n)&&n>=0&&n<=1)?track.peaks.slice():[];
+ const safe={id:track.id,title:track.title.slice(0,512),artist:'Local audio',genre:'Local files',bpm:0,key:'—',duration:track.duration,color:'#96c7a8',local:true,peaks};
+ localTracks.set(safe.id,safe);return safe;
+}
+export const trackById = id => localTracks.get(id) || TRACKS.find(track => track.id === id);

@@ -1,0 +1,77 @@
+.native-desktop .native-audio-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  background: #151b1f;
+  border-bottom: 1px solid #ffffff12;
+  color: #a9b9c2;
+  font:
+    10px/1.5 ui-monospace,
+    monospace;
+  min-width: 0;
+}
+.native-audio-state {
+  flex: 1;
+  min-width: 0;
+}
+.native-audio-bar button {
+  border: 1px solid #4b5a63;
+  background: #222d34;
+  color: #e0e8e6;
+  border-radius: 3px;
+  padding: 6px 10px;
+  white-space: nowrap;
+  font: inherit;
+}
+.native-audio-bar .native-import {
+  border-color: #55796b;
+  background: #23372f;
+  color: #bfdfcd;
+}
+.native-desktop button:disabled,
+.native-desktop input:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+.native-desktop .vu i {
+  height: 0 !important;
+  animation: none !important;
+}
+.native-desktop .vu {
+  opacity: 0.18;
+}
+.native-desktop .precision-ruler {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  align-items: center;
+  justify-content: center;
+}
+.native-desktop .linear-phrase {
+  font-size: 9px;
+}
+.native-desktop .engine-label {
+  color: #9bc3ab;
+}
+.native-desktop .native-audio-bar [hidden] {
+  display: none;
+}
+.native-desktop .footer-info {
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  .native-desktop .native-audio-bar {
+    padding: 7px 10px;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .native-desktop .native-audio-state {
+    flex-basis: 100%;
+  }
+  .native-desktop .statusbar > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 70%;
+  }
+}

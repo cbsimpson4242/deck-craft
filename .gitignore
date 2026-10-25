@@ -13,7 +13,12 @@
 node_modules/
 dist/
 build/
+release/
+native/target/
+native/deck-craft-audio
 coverage/
+__pycache__/
+*.pyc
 .local/
 .DS_Store
 # Personal libraries and audio recordings

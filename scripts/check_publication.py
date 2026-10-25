@@ -1,4 +1,4 @@
-"""Conservative checks for this dependency-free prototype publication.
+"""Conservative checks for Deck Craft public source publication.
 
 This is not a general secret scanner. Manual confidentiality review is required.
 Run from the repository root with Python 3.
@@ -30,7 +30,7 @@ for path in paths:
     for name, pattern in patterns.items():
         if re.search(pattern, text):
             errors.append(f'{path.relative_to(ROOT)}: possible {name}')
-    if path.suffix in {'.js', '.mjs'}:
+    if path.suffix in {'.js', '.mjs', '.cjs'}:
         result = subprocess.run(['node', '--check', str(path)], capture_output=True, text=True)
         if result.returncode:
             errors.append(f'{path.relative_to(ROOT)}: JavaScript syntax failure')
@@ -38,7 +38,7 @@ for path in paths:
         if re.search(r'<(?:script|link|img)\b[^>]*(?:src|href)\s*=\s*[\'\"]https?://', text, re.I):
             errors.append(f'{path.name}: external resource')
         for script in re.findall(r'<script>(.*?)</script>', text, re.S):
-            with tempfile.NamedTemporaryFile(suffix='.js', mode='w', dir=ROOT.parent) as tmp:
+            with tempfile.NamedTemporaryFile(suffix='.js', mode='w') as tmp:
                 tmp.write(script)
                 tmp.flush()
                 result = subprocess.run(['node', '--check', tmp.name], capture_output=True, text=True)

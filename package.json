@@ -1,14 +1,26 @@
 {
   "name": "deck-craft",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Deck Craft shared-state application UI foundation",
+  "description": "Open-source DJ desktop and native audio foundation",
   "license": "MIT",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "test": "node --test tests/*.test.js",
     "build": "node scripts/build.mjs",
-    "test:browser": "node scripts/browser-test.mjs"
+    "test:browser": "node scripts/browser-test.mjs",
+    "build:native": "node scripts/build-native.mjs",
+    "build:desktop": "npm run build && npm run build:native",
+    "desktop": "electron desktop/main.cjs",
+    "test:rust": "cargo test --manifest-path native/Cargo.toml --locked --jobs 2",
+    "test:native": "node scripts/native-integration.mjs",
+    "test:desktop": "node scripts/desktop-test.mjs",
+    "package:desktop": "node scripts/desktop-package.mjs"
+  },
+  "devDependencies": {
+    "electron": "45.0.0"
   }
 }

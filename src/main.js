@@ -1,9 +1,13 @@
-import { LAYOUTS, DECK_IDS, TRACKS, trackById } from './catalog.js';
+import { DECK_IDS, LAYOUTS, trackById } from './catalog.js';
+import { NativeSession, restoreNativeCatalog } from './native.js';
 import { createStore } from './store.js';
 import { createViewOptions, renderSession } from './views.js';
 import { icon, timeLabel } from './components.js';
 
 const root=document.getElementById('app');
+const nativeBridge=globalThis.deckCraftNative||null;
+const nativeWarning=await restoreNativeCatalog(nativeBridge);
+let nativeAudio=null;
 const store=createStore({getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value)});
 const options=Object.fromEntries(LAYOUTS.map(layout=>[layout.id,createViewOptions()]));
 const $=(selector,parent=root)=>parent.querySelector(selector);
@@ -20,7 +24,8 @@ function update() {
   document.title='Deck Craft — '+layout.name;
   $$('.layout-picker').forEach(select=>{select.value=state.layout;});
   $$('.mode').forEach(button=>button.classList.toggle('active',button.dataset.value===state.mode));
-  const warning=$('.persistence-warning');warning.hidden=!store.getWarning();warning.textContent=store.getWarning();root.dataset.saved=store.getWarning()?'false':'true';
+  const persistenceWarning=[store.getWarning(),nativeAudio?.warning].filter(Boolean).join(' ');
+  const warning=$('.persistence-warning');warning.hidden=!persistenceWarning;warning.textContent=persistenceWarning;root.dataset.saved=persistenceWarning?'false':'true';
   for(const id of DECK_IDS) {
     const d=state.decks[id],track=trackById(d.trackId);
     $$(`section.deck[data-deck="${id}"]`).forEach(section=>{
@@ -34,7 +39,7 @@ function update() {
       if(button.classList.contains('loop')) $('span',button).textContent=d.loopLength;
     });
     $$(`[data-action="deck-number"][data-deck="${id}"]`).forEach(input=>{
-      const value=d[input.dataset.field];if(Number(input.value)!==value)input.value=value;
+      const value=d[input.dataset.field];if(Number(input.value)!==value&&(!nativeAudio||document.activeElement!==input))input.value=value;
       const label=input.closest('label');
       if(label?.classList.contains('knob')) {$('.dial i',label).style.transform=`rotate(${(value-50)*2.7}deg)`;input.setAttribute('aria-valuetext',value+' percent');}
       if(label?.classList.contains('pitch')) $('output',label).textContent=(value>=0?'+':'')+value.toFixed(1)+'%';
@@ -49,7 +54,7 @@ function update() {
     const hidden=$(`[data-hidden-deck="${id}"]`);
     if(hidden){$('.hidden-track',hidden).textContent=track.title;$('.hidden-state',hidden).textContent=d.playing?'UI transport on':'Paused';hidden.classList.toggle('active',d.playing||d.headphone||d.loopEnabled);}
   }
-  $$('[data-action="crossfader"]').forEach(input=>input.value=state.mixer.crossfader);
+  $$('[data-action="crossfader"]').forEach(input=>{if(!nativeAudio||document.activeElement!==input)input.value=state.mixer.crossfader;});
   for(const effect of ['echo','space']) {
     $$(`[data-action="toggle-fx"][data-effect="${effect}"]`).forEach(button=>button.setAttribute('aria-pressed',String(state.mixer.effects[effect].enabled)));
     $$(`[data-action="fx-wet"][data-effect="${effect}"]`).forEach(input=>input.value=state.mixer.effects[effect].wet);
@@ -76,6 +81,7 @@ function update() {
   $$('[data-cue-panel]').forEach(panel=>panel.hidden=!ui.openCues[panel.dataset.cuePanel]);
   $$('[data-action="pair"]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.value===state.pair)));
   $$('.wave-group').forEach(group=>group.hidden=group.dataset.group!==state.pair);
+  nativeAudio?.paint();
 }
 function mount() {
   const focusAction=document.activeElement?.dataset?.action;
@@ -83,21 +89,23 @@ function mount() {
   if(focusAction==='layout') $('.layout-picker').focus({preventScroll:true});
 }
 store.subscribe((state,action)=>{if(action.type==='layout'||action.type==='load')mount();else update();});
-function dispatch(action){store.dispatch(action);}
+function dispatch(action){if(!nativeAudio?.dispatch(action))store.dispatch(action);}
 
 root.addEventListener('click',event=>{
   const target=event.target.closest('button[data-action]');if(!target||!root.contains(target))return;
   const state=store.get(),ui=options[state.layout],id=target.dataset.deck,field=target.dataset.field;
   switch(target.dataset.action) {
+    case 'import-audio':nativeAudio?.importAudio(store.get().library.target);break;
+    case 'reconnect-audio':nativeAudio?.reconnect();break;
     case 'mode':dispatch({type:'mode',value:target.dataset.value});break;
-    case 'toggle-deck':dispatch({type:'deck',deck:id,field,value:!state.decks[id][field]});if(field==='playing')toast('Transport UI state only — no audio engine is connected.');break;
+    case 'toggle-deck':dispatch({type:'deck',deck:id,field,value:!state.decks[id][field]});if(field==='playing'&&!nativeAudio)toast('Transport UI state only — no audio engine is connected.');break;
     case 'cue':dispatch({type:'cue',deck:id});break;
     case 'loop-size':dispatch({type:'deck',deck:id,field:'loopLength',value:Math.max(1,Math.min(32,state.decks[id].loopLength*Number(target.dataset.factor)))});break;
     case 'hot-cue':dispatch({type:event.shiftKey?'setCue':'hotCue',deck:id,index:Number(target.dataset.index)});if(event.shiftKey)toast('Cue stored at the current UI position.');break;
     case 'set-cue':dispatch({type:'setCue',deck:id,index:Number(target.dataset.index)});toast('Cue stored for deck '+id+'.');break;
     case 'crate':dispatch({type:'library',field:'crate',value:target.dataset.value});break;
     case 'density':dispatch({type:'library',field:'dense',value:!state.library.dense});break;
-    case 'load':dispatch({type:'load',deck:state.library.target,trackId:target.dataset.track});toast('Demo track loaded into deck '+state.library.target+'. Waveform is synthetic; no audio is loaded.');break;
+    case 'load':dispatch({type:'load',deck:state.library.target,trackId:target.dataset.track});if(!nativeAudio)toast('Demo track loaded into deck '+state.library.target+'. Waveform is synthetic; no audio is loaded.');break;
     case 'clear-search':dispatch({type:'library',field:'query',value:''});dispatch({type:'library',field:'crate',value:'all'});break;
     case 'toggle-fx':dispatch({type:'fx',effect:target.dataset.effect,field:'enabled',value:!state.mixer.effects[target.dataset.effect].enabled});break;
     case 'grid':ui.grid=!ui.grid;update();break;
@@ -133,4 +141,7 @@ root.addEventListener('keydown',event=>{
   const row=event.target.closest('tr[data-track-id]');if(row&&event.target===row&&event.key==='Enter'){$('.load',row).click();}
 });
 document.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'){event.preventDefault();$('.search').focus();}});
+nativeAudio=nativeBridge?new NativeSession(nativeBridge,store,{redraw:mount,say:toast}):null;
+if(nativeAudio)nativeAudio.warning=nativeWarning;
 mount();
+await nativeAudio?.initialize();

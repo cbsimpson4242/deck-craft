@@ -1,36 +1,37 @@
 # Progress
 
-## Current milestone: shared-state application UI
+## Current: Omarchy-first native desktop/audio foundation
 
-The user approved retaining **all five Round 03 layouts** inside the actual app, then approved implementation of the application UI/layout system with audio work explicitly separate.
+The user approved an installed desktop app and first real local-file → deck → play/pause/seek workflow, retaining all five approved layouts and paused restoration. Omarchy Linux is the first target; native hardware acceptance remains pending while the target machine is unavailable.
 
-Implemented:
+Implemented in the native preview:
 
-- Signal One, Signal Wide, Studio Grid, Studio Linear and Studio Sync as in-app layouts; Studio Sync default.
-- One shared four-deck model, shared renderer components and delegated application event handlers. No iframe or separate document/application per layout.
-- Layout changes preserve loaded demo tracks, positions, cues, loop state/length, pitch, Sync, monitor flags, gain/EQ/filter/level, crossfader, FX settings and collection state.
-- Two-deck views retain C/D with a visible status strip, UI transport controls and quick four-deck access. Global mixer exposes all four decks.
-- Versioned local persistence for device/browser choice and session settings. Restores paused. Malformed data recovers safely; write refusal preserves in-memory state and displays an unsaved warning.
-- Dependency-free browser UI, module source entry point and reproducible offline single-file application build.
+- Sandboxed Electron desktop window with one native Rust/Rodio/CPAL child; no network service or renderer Node access.
+- Local file import, opaque source IDs, private mode-0600 library, descriptor identity checks and safe format/file errors.
+- Four native decks; actual play/pause/seek, manual cues, channel levels and A/B crossfader. Native consumed media frames own position.
+- Worker-side streaming decode and seek preparation, bounded PCM rings and off-callback retirement; no file reads in the device-facing PCM iterator.
+- PCM-derived local waveforms; unimplemented BPM/key/beat features are not fabricated. Unsupported DSP/routing controls are disabled.
+- All five layouts remain selectable without changing native source or generation; C/D survive two-deck views.
+- Device-local session/library restoration, always paused. Superseded asynchronous Play cannot resume after a newer Pause.
+- User-local, checksum-verified installer/package with menu launcher, versioned releases and rollback; no sudo or system-service changes.
 
 ## Entry points
 
-- `npm run build` produces `dist/deck-craft.html`; open it in a modern browser.
-- `index.html` is the module-source entry point when served on loopback.
-- README.md documents controls and limits; `docs/APPLICATION.md` maps the authorities.
+- `npm ci && npm run build:desktop && npm run desktop`: native development build.
+- `npm run package:desktop`: small Linux x86-64 app/native-engine package with verified official-runtime download at installation.
+- `npm run build`: browser-only UI artifact; still no audio outside the native bridge.
+- `docs/NATIVE-DESKTOP.md`: architecture, ownership, test setup and explicit acceptance limits.
 
-## Verification
+## Verification status
 
-See `docs/APP-VERIFICATION.md`. Unit tests, bundled-script syntax, real Chromium transition/restart/persistence checks, responsive geometry and publication scanning were exercised. Historical design documents and selected references remain byte-identical.
+Exact-candidate independent native/security/desktop review and the focused persistent-warning follow-up passed. Executed gates: 46 Node tests (including five real-renderer DOM warning scenarios with a mocked native bridge), six Rust tests, five installer safety tests, 25 browser layout transitions and 20 responsive cases. Real native output capture passed 18 checks including actual format decoding, pause/seek/crossfader and engine death. Real Electron integration passed first-use and paused restart phases. The actual packaged installer and ordinary launcher were exercised in an isolated home; installed payload hashes, real engine death/reconnect and full-package rollback in both directions were verified.
 
-## Scope boundary / next meaningful work
+The isolated Linux signal lane uses the upstream-corrected PulseAudio ALSA timing-error comparison described in `docs/NATIVE-DESKTOP.md`; stock-driver failures remain recorded separately. That correction is confined to a private test dependency and is not bundled or installed as a system driver. Private execution receipts and review verdicts stay outside public source.
 
-This milestone is the application UI foundation, **not** a playable DJ engine. All tracks/waveforms/art remain synthetic. UI Play does not produce audio or run a simulated audio clock. FX/mixer values are shared settings without processing. No personal music import, device/controller access, native package or network backend has been added.
+The default desktop suite injects only OS file selection; the engine, files, UI, native controls and persistence are real. An earlier optional GTK chooser run selected and loaded generated audio, but controller cleanup/restore did not complete cleanly. Existing mounts and system services were not changed to make the suite pass. Do not report complete native-chooser lifecycle or target-laptop acceptance from these tests.
 
-Next product decision: audio engine/platform and the first real load → play → seek → mix vertical slice. That work has not been approved or implemented here. Do not keep iterating layouts as if the user still needs to select a single winner.
+## Remaining product work
 
-## Design history
+Target Omarchy installation, Wayland/portal behavior, physical output and hardware latency must be verified on the actual target. EQ/FX, loops/sync, beat/key analysis, time stretching, meters, headphone routing, controllers and other platforms remain unimplemented. This is a native playback foundation, not professional-DJ parity.
 
-Round 01 was rejected. Signal and Studio from Round 02 were selected for refinement. All five Round 03 refinements were accepted as selectable layouts. Preserve all rounds and reference hashes; they remain design evidence, not executable application owners.
-
-Private runtime registration, local browser profiles and detailed operational receipts stay outside this public repository.
+All historical mockups and original selected-reference hashes remain unchanged. Private machine/network details, runtime registrations, selected music, profiles and operational/process receipts stay outside public source.
