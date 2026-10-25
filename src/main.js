@@ -1,0 +1,136 @@
+import { LAYOUTS, DECK_IDS, TRACKS, trackById } from './catalog.js';
+import { createStore } from './store.js';
+import { createViewOptions, renderSession } from './views.js';
+import { icon, timeLabel } from './components.js';
+
+const root=document.getElementById('app');
+const store=createStore({getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value)});
+const options=Object.fromEntries(LAYOUTS.map(layout=>[layout.id,createViewOptions()]));
+const $=(selector,parent=root)=>parent.querySelector(selector);
+const $$=(selector,parent=root)=>[...parent.querySelectorAll(selector)];
+let toastTimer;
+function toast(message) {
+  clearTimeout(toastTimer);const target=$('.toast');target.textContent=message;
+  toastTimer=setTimeout(()=>{const current=$('.toast');if(current)current.textContent='';},2800);
+}
+function update() {
+  const state=store.get(),ui=options[state.layout],layout=LAYOUTS.find(l=>l.id===state.layout);
+  document.body.className=layout.classes+' engine-off'+(state.mode==='prepare'?' prepare-mode':'')+(!ui.grid?' no-grid':'')+(ui.detail?' wave-detail':'');
+  root.dataset.layout=state.layout;
+  document.title='Deck Craft — '+layout.name;
+  $$('.layout-picker').forEach(select=>{select.value=state.layout;});
+  $$('.mode').forEach(button=>button.classList.toggle('active',button.dataset.value===state.mode));
+  const warning=$('.persistence-warning');warning.hidden=!store.getWarning();warning.textContent=store.getWarning();root.dataset.saved=store.getWarning()?'false':'true';
+  for(const id of DECK_IDS) {
+    const d=state.decks[id],track=trackById(d.trackId);
+    $$(`section.deck[data-deck="${id}"]`).forEach(section=>{
+      $$('.remaining',section).forEach(el=>el.textContent='−'+timeLabel(track.duration-d.position,true));
+      $$('.elapsed',section).forEach(el=>el.textContent=timeLabel(d.position,true)+(el.closest('.linear-clock')?' / '+timeLabel(track.duration):''));
+      section.classList.toggle('active-pair',state.layout==='studio-sync'&&state.pair.includes(id.toLowerCase()));
+    });
+    $$(`[data-action="toggle-deck"][data-deck="${id}"]`).forEach(button=>{
+      const on=d[button.dataset.field];button.setAttribute('aria-pressed',String(on));
+      if(button.classList.contains('play')||button.closest('.hidden-deck')) {button.innerHTML=icon(on?'pause':'play');button.setAttribute('aria-label',(on?'Pause':'Play')+' deck '+id+' UI transport; no audio');}
+      if(button.classList.contains('loop')) $('span',button).textContent=d.loopLength;
+    });
+    $$(`[data-action="deck-number"][data-deck="${id}"]`).forEach(input=>{
+      const value=d[input.dataset.field];if(Number(input.value)!==value)input.value=value;
+      const label=input.closest('label');
+      if(label?.classList.contains('knob')) {$('.dial i',label).style.transform=`rotate(${(value-50)*2.7}deg)`;input.setAttribute('aria-valuetext',value+' percent');}
+      if(label?.classList.contains('pitch')) $('output',label).textContent=(value>=0?'+':'')+value.toFixed(1)+'%';
+    });
+    $$(`[data-action="hot-cue"][data-deck="${id}"]`).forEach(button=>{
+      const cue=d.cues[Number(button.dataset.index)];$('small',button).textContent=timeLabel(cue);button.setAttribute('aria-pressed',String(Math.abs(cue-d.position)<.05));
+    });
+    $$(`[data-wave-deck="${id}"]`).forEach(box=>{
+      $('.position-marker',box).style.left=d.position/track.duration*100+'%';
+      $$('[data-cue-flag]',box).forEach(flag=>flag.style.left=d.cues[Number(flag.dataset.cueFlag)]/track.duration*100+'%');
+    });
+    const hidden=$(`[data-hidden-deck="${id}"]`);
+    if(hidden){$('.hidden-track',hidden).textContent=track.title;$('.hidden-state',hidden).textContent=d.playing?'UI transport on':'Paused';hidden.classList.toggle('active',d.playing||d.headphone||d.loopEnabled);}
+  }
+  $$('[data-action="crossfader"]').forEach(input=>input.value=state.mixer.crossfader);
+  for(const effect of ['echo','space']) {
+    $$(`[data-action="toggle-fx"][data-effect="${effect}"]`).forEach(button=>button.setAttribute('aria-pressed',String(state.mixer.effects[effect].enabled)));
+    $$(`[data-action="fx-wet"][data-effect="${effect}"]`).forEach(input=>input.value=state.mixer.effects[effect].wet);
+  }
+  $$('.library').forEach(el=>el.classList.toggle('tight-rows',state.library.dense));
+  $('.view-toggle').setAttribute('aria-pressed',String(state.library.dense));
+  if($('.search').value!==state.library.query) $('.search').value=state.library.query;
+  $('.load-target').value=state.library.target;
+  let count=0;const query=state.library.query.toLowerCase();
+  $$('tr[data-track-id]').forEach(row=>{
+    const track=trackById(row.dataset.trackId),matches=(state.library.crate==='all'||track.genre===state.library.crate)&&[track.title,track.artist,track.genre,track.key,track.bpm].join(' ').toLowerCase().includes(query);
+    row.hidden=!matches;if(matches)count++;
+    row.classList.toggle('selected',state.decks[state.library.target].trackId===track.id);
+    $('.load',row).setAttribute('aria-label','Load '+track.title+' into deck '+state.library.target);
+  });
+  $('.track-count').textContent=count+(count===1?' track':' tracks');$('.empty').hidden=count!==0;
+  $('.crate-name').textContent=state.library.crate==='all'?'All tracks':state.library.crate;
+  $$('.crate').forEach(button=>button.classList.toggle('active',button.dataset.value===state.library.crate));
+  $$('.grid-toggle').forEach(button=>button.setAttribute('aria-pressed',String(ui.grid)));
+  $$('.wave-zoom').forEach(button=>button.setAttribute('aria-pressed',String(ui.detail)));
+  $$('[data-action="all-cues"]').forEach(button=>button.setAttribute('aria-expanded',String(ui.cuesOpen)));
+  $$('[data-all-cues]').forEach(panel=>panel.hidden=state.layout==='signal-wide'&&!ui.cuesOpen);
+  $$('[data-action="cue-disclosure"]').forEach(button=>button.setAttribute('aria-expanded',String(ui.openCues[button.dataset.deck])));
+  $$('[data-cue-panel]').forEach(panel=>panel.hidden=!ui.openCues[panel.dataset.cuePanel]);
+  $$('[data-action="pair"]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.value===state.pair)));
+  $$('.wave-group').forEach(group=>group.hidden=group.dataset.group!==state.pair);
+}
+function mount() {
+  const focusAction=document.activeElement?.dataset?.action;
+  root.innerHTML=renderSession(store.get(),options[store.get().layout]);update();
+  if(focusAction==='layout') $('.layout-picker').focus({preventScroll:true});
+}
+store.subscribe((state,action)=>{if(action.type==='layout'||action.type==='load')mount();else update();});
+function dispatch(action){store.dispatch(action);}
+
+root.addEventListener('click',event=>{
+  const target=event.target.closest('button[data-action]');if(!target||!root.contains(target))return;
+  const state=store.get(),ui=options[state.layout],id=target.dataset.deck,field=target.dataset.field;
+  switch(target.dataset.action) {
+    case 'mode':dispatch({type:'mode',value:target.dataset.value});break;
+    case 'toggle-deck':dispatch({type:'deck',deck:id,field,value:!state.decks[id][field]});if(field==='playing')toast('Transport UI state only — no audio engine is connected.');break;
+    case 'cue':dispatch({type:'cue',deck:id});break;
+    case 'loop-size':dispatch({type:'deck',deck:id,field:'loopLength',value:Math.max(1,Math.min(32,state.decks[id].loopLength*Number(target.dataset.factor)))});break;
+    case 'hot-cue':dispatch({type:event.shiftKey?'setCue':'hotCue',deck:id,index:Number(target.dataset.index)});if(event.shiftKey)toast('Cue stored at the current UI position.');break;
+    case 'set-cue':dispatch({type:'setCue',deck:id,index:Number(target.dataset.index)});toast('Cue stored for deck '+id+'.');break;
+    case 'crate':dispatch({type:'library',field:'crate',value:target.dataset.value});break;
+    case 'density':dispatch({type:'library',field:'dense',value:!state.library.dense});break;
+    case 'load':dispatch({type:'load',deck:state.library.target,trackId:target.dataset.track});toast('Demo track loaded into deck '+state.library.target+'. Waveform is synthetic; no audio is loaded.');break;
+    case 'clear-search':dispatch({type:'library',field:'query',value:''});dispatch({type:'library',field:'crate',value:'all'});break;
+    case 'toggle-fx':dispatch({type:'fx',effect:target.dataset.effect,field:'enabled',value:!state.mixer.effects[target.dataset.effect].enabled});break;
+    case 'grid':ui.grid=!ui.grid;update();break;
+    case 'detail':ui.detail=!ui.detail;update();break;
+    case 'all-cues':ui.cuesOpen=!ui.cuesOpen;update();break;
+    case 'cue-disclosure':ui.openCues[id]=!ui.openCues[id];update();break;
+    case 'pair':dispatch({type:'pair',value:target.dataset.value});break;
+    case 'open-mixer':$('.mixer-dialog').showModal();break;
+    case 'close-mixer':$('.mixer-dialog').close();break;
+    case 'open-info':$('.info-dialog').showModal();break;
+    case 'close-info':$('.info-dialog').close();break;
+    case 'show-four':dispatch({type:'mode',value:'perform'});dispatch({type:'pair',value:'cd'});dispatch({type:'layout',value:'studio-sync'});$('section[data-deck="C"]')?.scrollIntoView({block:'nearest'});break;
+  }
+});
+root.addEventListener('input',event=>{
+  const input=event.target;if(!input.matches('[data-action]'))return;
+  switch(input.dataset.action) {
+    case 'search':dispatch({type:'library',field:'query',value:input.value});break;
+    case 'deck-number':dispatch({type:'deck',deck:input.dataset.deck,field:input.dataset.field,value:Number(input.value)});break;
+    case 'crossfader':dispatch({type:'mixer',field:'crossfader',value:Number(input.value)});break;
+    case 'fx-wet':dispatch({type:'fx',effect:input.dataset.effect,field:'wet',value:Number(input.value)});break;
+  }
+});
+root.addEventListener('change',event=>{
+  const input=event.target;
+  if(input.dataset.action==='layout')dispatch({type:'layout',value:input.value});
+  if(input.dataset.action==='load-target')dispatch({type:'library',field:'target',value:input.value});
+});
+root.addEventListener('contextmenu',event=>{
+  const button=event.target.closest('[data-action="hot-cue"]');if(!button)return;event.preventDefault();dispatch({type:'setCue',deck:button.dataset.deck,index:Number(button.dataset.index)});toast('Cue stored at the current UI position.');
+});
+root.addEventListener('keydown',event=>{
+  const row=event.target.closest('tr[data-track-id]');if(row&&event.target===row&&event.key==='Enter'){$('.load',row).click();}
+});
+document.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'){event.preventDefault();$('.search').focus();}});
+mount();

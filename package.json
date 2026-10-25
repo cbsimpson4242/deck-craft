@@ -1,0 +1,14 @@
+{
+  "name": "deck-craft",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Deck Craft shared-state application UI foundation",
+  "license": "MIT",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "build": "node scripts/build.mjs",
+    "test:browser": "node scripts/browser-test.mjs"
+  }
+}

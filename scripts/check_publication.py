@@ -22,12 +22,18 @@ patterns = {
     'GitHub token': r'gh[pousr]_' + r'[A-Za-z0-9]{20,}',
     'private key': r'-----BEGIN ' + r'(?:RSA |EC |OPENSSH )?PRIVATE KEY-----',
 }
-paths = [p for p in ROOT.rglob('*') if p.is_file() and '.git' not in p.relative_to(ROOT).parts]
+# Audit publishable source, not ignored builds, caches, or browser evidence.
+names = subprocess.check_output(['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'], cwd=ROOT).decode().split('\0')
+paths = [ROOT / name for name in sorted(set(names)) if name and (ROOT / name).is_file()]
 for path in paths:
     text = path.read_text()
     for name, pattern in patterns.items():
         if re.search(pattern, text):
             errors.append(f'{path.relative_to(ROOT)}: possible {name}')
+    if path.suffix in {'.js', '.mjs'}:
+        result = subprocess.run(['node', '--check', str(path)], capture_output=True, text=True)
+        if result.returncode:
+            errors.append(f'{path.relative_to(ROOT)}: JavaScript syntax failure')
     if path.suffix == '.html':
         if re.search(r'<(?:script|link|img)\b[^>]*(?:src|href)\s*=\s*[\'\"]https?://', text, re.I):
             errors.append(f'{path.name}: external resource')

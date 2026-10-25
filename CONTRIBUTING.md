@@ -8,4 +8,4 @@ Design prototypes must remain clearly labelled; do not present simulated actions
 
 ## Local checks
 
-Run `python3 scripts/check_publication.py` from the repository root. Open `designs/deck-craft-comparison.html` and exercise all five selectors and their controls. Review the entire staged diff before any public push; ignore rules and pattern scanning are safeguards, not proof that no sensitive content exists.
+Run `npm test`, `npm run build`, `node --check dist/bundle-check.mjs`, `npm run test:browser` (Chromium required) and `python3 scripts/check_publication.py` from the repository root. Open `dist/deck-craft.html` and exercise all five layouts with a changed session, then reload and verify the saved preference. Check preserved C/D in two-deck views and inspect expanded controls at desktop/phone sizes. Historical comparisons are design evidence, not the application's entry point. Review the entire staged diff before any public push; ignore rules and pattern scanning are safeguards, not proof that no sensitive content exists.
