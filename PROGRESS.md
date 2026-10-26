@@ -1,16 +1,22 @@
 # Progress
 
+## Merged-release target deployment
+
+The reviewed merged release is now installed user-locally on the Omarchy target. Its exact package passed checksum/payload verification and isolated installed-app checks for native metadata inspection, collection persistence, paused restart and offline selected-track removal protection. The ordinary desktop entry opens one native Wayland application window with one native engine; the visible UI reports audio ready at 48,000 Hz and restored decks are paused. Independent target readback confirms all 186 payload files, unchanged private library bytes, a private-state backup and the previous release retained for rollback. Detailed deployment receipts remain outside source.
+
+No music playback or hardware-latency test was performed during deployment. The earlier isolated signal/desktop results below remain source-integration evidence; this package smoke check is not a new signal-capture or physical-output acceptance run. Nothing was pushed.
+
 ## Local integration verification
 
 The merged source candidate combines the persistent local library and folder-navigation correction with the committed Performance console presentation across all five layouts. The selected-track safety correction below is included; unfinished customizable-canvas work and generated/private artifacts are excluded.
 
-Verification on the combined source passes 57 Node tests, six Rust tests, five installer tests, desktop/UI build and bundle syntax, 25 browser layout transitions, 30 responsive cases and publication checks. Fresh native signal capture passes all 18 checks through an explicit isolated output. Real Electron/native first-use, paused restart and offline/reconnect phases pass, including selected-track removal protection. The independent corrected-task review passed before integration; the merge preserves its backend/session code unchanged and retains the existing presentation source. This local integration has not been pushed or redeployed, and does not establish physical-output, full portal lifecycle or hardware-latency acceptance.
+Verification on the combined source passes 57 Node tests, six Rust tests, five installer tests, desktop/UI build and bundle syntax, 25 browser layout transitions, 30 responsive cases and publication checks. Fresh native signal capture passes all 18 checks through an explicit isolated output. Real Electron/native first-use, paused restart and offline/reconnect phases pass, including selected-track removal protection. The independent corrected-task review passed before integration; the merge preserves its backend/session code unchanged and retains the existing presentation source. At this integration checkpoint it had not yet been pushed or redeployed; the subsequent target deployment is recorded above. Neither establishes physical-output, full portal lifecycle or hardware-latency acceptance.
 
 ## Pre-commit selected-track safety correction
 
 Review identified an offline-restoration edge case: an empty native deck snapshot could allow removal of a track still selected in the renderer. Selected sources are now retained by bounded main-process deck references before audio readiness is checked, preserved across engine reconnect, and checked alongside native/pending-load references before library removal. The renderer also refuses selected-track removal, and catalog replacement validates its full candidate before changing entries or orphaning a selected deck.
 
-Four focused regressions reproduce/protect the UI, catalog, initialization and IPC boundaries. The real Electron offline lane additionally verifies direct-IPC and UI refusal after restart and engine reconnect. The corrected task branch passes 56 Node tests, six Rust tests and five installer tests, plus the real desktop lane. This source-only review correction has not been redeployed to the target; the target retains its confirmed 0.3.1 folder-navigation fix.
+Four focused regressions reproduce/protect the UI, catalog, initialization and IPC boundaries. The real Electron offline lane additionally verifies direct-IPC and UI refusal after restart and engine reconnect. The corrected task branch passes 56 Node tests, six Rust tests and five installer tests, plus the real desktop lane. At this review checkpoint the correction was source-only; it is now included in the merged-release target deployment above, alongside the confirmed 0.3.1 folder-navigation fix.
 
 ## Folder-navigation correction (0.3.1)
 
