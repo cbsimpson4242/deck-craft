@@ -34,9 +34,10 @@ export class LibraryController {
   }
   paint() {
     const state=this.store.get(),group=libraryCollections().find(c=>c.id===state.library.crate);
-    const q=s=>this.root.querySelector(s),qa=s=>[...this.root.querySelectorAll(s)];
+    for(const panel of this.root.querySelectorAll('.local-library:not(.design-preview .local-library)')) {
+    const q=s=>panel.querySelector(s),qa=s=>[...panel.querySelectorAll(s)];
     const visible=orderedLibraryTracks(state),ids=new Set(visible.filter(t=>t.local).map(t=>t.id));
-    const picker=q('[data-action="library-view"]');if(!picker)return;
+    const picker=q('[data-action="library-view"]');if(!picker)continue;
     picker.value=group?.id||(state.library.crate==='demo'?'demo':'all');
     if(!libraryCollections().some(c=>c.id===this.destination))this.destination='';
     q('[data-action="library-destination"]').value=this.destination;
@@ -57,6 +58,7 @@ export class LibraryController {
       row.querySelector('.playlist-order').hidden=group?.kind!=='playlist';
       const index=group?.trackIds.indexOf(row.dataset.trackId)??-1;
       for(const button of row.querySelectorAll('[data-action="library-move"]'))button.disabled=this.busy||index<0||(button.dataset.direction==='-1'?index===0:index===group.trackIds.length-1);
+    }
     }
   }
   async run(request) {
@@ -89,7 +91,7 @@ export class LibraryController {
     if(!['library-import','library-new','library-rename','library-delete','library-forget','library-cancel','library-save','library-add','library-remove','library-move'].includes(action))return false;
     if(this.busy)return true;
     const group=libraryCollections().find(c=>c.id===this.store.get().library.crate);
-    const dialog=this.root.querySelector('.collection-dialog');
+    const dialog=(target.closest('.local-library')||this.root).querySelector('.collection-dialog');
     const ids=[...this.selected].slice(0,1000);
     if(action==='library-import')this.run({type:'import',kind:target.dataset.kind});
     else if(['library-new','library-rename','library-delete','library-forget'].includes(action)) {
@@ -109,7 +111,7 @@ export class LibraryController {
       if((request?.type==='collection-create'||request?.type==='collection-rename')&&!name){dialog.querySelector('p').textContent='Enter a name.';return true;}
       dialog.close();if(request)this.run(request);
     } else if(action==='library-add') {
-      const id=this.root.querySelector('[data-action="library-destination"]').value;
+      const id=this.destination;
       if(id&&ids.length)this.run({type:'collection-add',id,trackIds:ids});else {this.message='Choose a destination crate or playlist first.';this.paint();}
     } else if(action==='library-remove'&&group&&ids.length)this.run({type:'collection-remove',id:group.id,trackIds:ids});
     else if(action==='library-move'&&group)this.run({type:'collection-move',id:group.id,trackId:target.dataset.track,direction:Number(target.dataset.direction)});
@@ -120,7 +122,7 @@ export class LibraryController {
       this.store.dispatch({type:'library',field:'crate',value:input.value});
       this.store.dispatch({type:'library',field:'sort',value:libraryCollections().find(c=>c.id===input.value)?.kind==='playlist'?'order':'title'});
     } else if(input.dataset.action==='library-sort')this.store.dispatch({type:'library',field:'sort',value:input.value});
-    else if(input.dataset.action==='library-destination')this.destination=input.value;
+    else if(input.dataset.action==='library-destination'){this.destination=input.value;this.paint();}
     else if(input.dataset.action==='library-select') {if(input.checked&&this.selected.size<1000)this.selected.add(input.dataset.track);else this.selected.delete(input.dataset.track);this.paint();}
     else if(input.dataset.action==='library-select-all') {
       for(const track of orderedLibraryTracks(this.store.get()).filter(t=>t.local)) {if(input.checked&&this.selected.size<1000)this.selected.add(track.id);else if(!input.checked)this.selected.delete(track.id);}

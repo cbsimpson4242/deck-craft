@@ -4,7 +4,7 @@
 
 An open-source DJ application built around professional workflows, reliable performance, and community ownership.
 
-**Current milestone: a Linux desktop preview with a real local music library and separate native Rust audio engine.** Browse files/folders, build crates and ordered playlists, load a deck, play/pause/seek, store manual cues, change channel levels and use the A/B crossfader. All five approved layouts share the same four-deck session.
+**Current milestone: a customizable component canvas over the Linux native desktop preview.** Assemble and style existing decks, mixer, browser and smaller parts; save reusable components/workspaces and export a self-contained AI-agent creator kit. Browse local files/folders, build crates and ordered playlists, and play/pause/seek through the separate Rust audio engine. All five approved layouts remain available over the same four-deck session.
 
 **Omarchy is the first target:** user-local installation and native Wayland window launch have been verified on the target desktop, with the native engine reporting audio ready. Full file-chooser/portal interaction, physical audible output and hardware latency still need acceptance there. This is not yet a Serato/Traktor replacement. EQ, FX, loops, sync, beat/key detection, time stretching, signal meters, headphone routing and controller integration are **not implemented**; those controls are disabled in the desktop app.
 
@@ -14,6 +14,7 @@ Build prerequisites: Linux x86-64, Node.js >=22.12, Rust >=1.87, a C toolchain, 
 
 ```sh
 npm ci
+node node_modules/electron/install.js
 npm run build:desktop
 npm run desktop
 ```
@@ -82,6 +83,12 @@ Use the **Layout** dropdown:
 
 A layout switch never reloads audio or creates another engine. C/D remain present in two-deck views, with status and quick access. Layout, loaded local-track IDs, positions and manual cues persist on this device. Restoring a session never starts playback. Missing or changed files produce errors, not silent substitution with a demo track.
 
+### Build your own workspace
+
+Choose **Customize** or **Layout → Custom canvas** for an initially empty canvas. Click/drag components from the drawer, move their title bars, resize their corners and use the inspector to change colors, corners, density, scale and deck bindings. Save reusable styled components and workspace presets. **Perform** locks layout editing; **Edit** unlocks it. The original Studio Sync default and all five original views are preserved, with editable starter arrangements also available in the builder.
+
+**AI creator kit** exports a design starter, exact versioned schemas, examples, capability reference and standalone validator for any external agent. Paste/open the generated JSON, validate and preview it, then explicitly apply it. This first stage styles existing controls only: no executable plugins or new audio behavior. Effects remain disabled placeholders. Removing a component removes its view, never its playing source. See [custom canvas and agent workflow](docs/CUSTOM-CANVAS.md).
+
 Imported waveforms are decoded PCM amplitude overviews, not beat grids or frequency analysis. BPM/key show an em dash for local tracks until real analysis exists. Artwork is a generated placeholder, not extracted album art.
 
 The private library is bounded by 10,000 records **and 16 MiB of serialized UTF-8 JSON**, whichever is reached first; waveforms, paths and collections share that budget. Save/restore use the same limits. At capacity, a visible warning reports that imports/metadata were not saved; playback can continue in the current session, while the previous durable library is left intact. Unsaved imports/metadata will not survive restart. Collection edits and library removals roll back in memory if their save fails. Waveform values are not fabricated or reduced to fit the budget. Existing version-1 libraries are supported. Before rolling back to a pre-0.3 app, back up private state separately: older apps do not preserve collection metadata when they next save the library.
@@ -103,6 +110,7 @@ python3 -m unittest discover -s tests -p 'test_installer.py' -v
 npm run build
 node --check dist/bundle-check.mjs
 npm run test:browser
+npm run test:canvas
 python3 scripts/check_publication.py
 ```
 

@@ -1,5 +1,6 @@
 import { DECK_IDS, trackById } from './catalog.js';
 import { header, hiddenDecks, dialogs, footer, deck, linearDeck, mixer, dock, effects, library, pads, wave, icon, escapeHTML, resetAssetSequence } from './components.js';
+import { renderCanvas, creatorDialog } from './canvas-view.js';
 
 export function createViewOptions() {return {grid:true,detail:false,cuesOpen:false,openCues:{A:false,B:false,C:false,D:false}};}
 function ruler() {return `<div class="precision-ruler">${Array.from({length:12},(_,i)=>`<span>${17+Math.floor(i/4)}.${i%4+1}</span>`).join('')}</div>`;}
@@ -30,8 +31,10 @@ function studio(state,ui,kind) {
 }
 
 /** Shared components and one model; no iframe, document reload, or per-layout engine. */
-export function renderSession(state,ui) {
+export function renderSession(state,ui,workspace=null,editorUI=null,history={undo:0,redo:0}) {
   resetAssetSequence();
-  const body=state.layout==='signal-one'?signalOne(state,ui):state.layout==='signal-wide'?signalWide(state,ui):studio(state,ui,state.layout);
-  return `<div class="app">${header(state)}<div class="persistence-warning" role="status" hidden></div>${hiddenDecks(state)}${body}${footer()}</div><div class="toast" role="status" aria-live="polite"></div>${dialogs(state)}`;
+  const custom=workspace?.active;
+  const body=custom?renderCanvas(workspace,editorUI,history,state):state.layout==='signal-one'?signalOne(state,ui):state.layout==='signal-wide'?signalWide(state,ui):studio(state,ui,state.layout);
+  const top=header(state).replace('</select>','<option value="canvas">Custom canvas</option></select>').replace('</header>','<button class="canvas-entry" data-editor="open-canvas">Customize</button></header>');
+  return `<div class="app">${top}<div class="persistence-warning" role="status" hidden></div>${custom?'':hiddenDecks(state)}${body}${footer()}</div><div class="toast" role="status" aria-live="polite"></div>${dialogs(state)}${creatorDialog()}`;
 }

@@ -4,16 +4,18 @@ import { createStore } from './store.js';
 import { createViewOptions, renderSession } from './views.js';
 import { icon, timeLabel } from './components.js';
 import { LibraryController, orderedLibraryTracks } from './library.js';
+import { CanvasEditor } from './canvas-editor.js';
 
 const root=document.getElementById('app');
 const nativeBridge=globalThis.deckCraftNative||null;
 const nativeWarning=await restoreNativeCatalog(nativeBridge);
 let nativeAudio=null;
 let libraryUI=null;
+let editor=null;
 const store=createStore({getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value)});
 const options=Object.fromEntries(LAYOUTS.map(layout=>[layout.id,createViewOptions()]));
-const $=(selector,parent=root)=>parent.querySelector(selector);
-const $$=(selector,parent=root)=>[...parent.querySelectorAll(selector)];
+const $=(selector,parent=root)=>[...parent.querySelectorAll(selector)].find(el=>!el.closest('.design-preview'));
+const $$=(selector,parent=root)=>[...parent.querySelectorAll(selector)].filter(el=>!el.closest('.design-preview'));
 let toastTimer;
 function toast(message) {
   clearTimeout(toastTimer);const target=$('.toast');target.textContent=message;
@@ -21,10 +23,11 @@ function toast(message) {
 }
 function update() {
   const state=store.get(),ui=options[state.layout],layout=LAYOUTS.find(l=>l.id===state.layout);
-  document.body.className=layout.classes+' engine-off'+(state.mode==='prepare'?' prepare-mode':'')+(!ui.grid?' no-grid':'')+(ui.detail?' wave-detail':'');
-  root.dataset.layout=state.layout;
-  document.title='Deck Craft — '+layout.name;
-  $$('.layout-picker').forEach(select=>{select.value=state.layout;});
+  const custom=store.getWorkspace().active;
+  document.body.className=(custom?'studio refined canvas-mode':layout.classes)+' engine-off'+(state.mode==='prepare'?' prepare-mode':'')+(!ui.grid?' no-grid':'')+(ui.detail?' wave-detail':'');
+  root.dataset.layout=custom?'canvas':state.layout;
+  document.title='Deck Craft — '+(custom?'Custom canvas':layout.name);
+  $$('.layout-picker').forEach(select=>{select.value=custom?'canvas':state.layout;});
   $$('.mode').forEach(button=>button.classList.toggle('active',button.dataset.value===state.mode));
   const persistenceWarning=[store.getWarning(),nativeAudio?.warning].filter(Boolean).join(' ');
   const warning=$('.persistence-warning');warning.hidden=!persistenceWarning;warning.textContent=persistenceWarning;root.dataset.saved=persistenceWarning?'false':'true';
@@ -62,21 +65,21 @@ function update() {
     $$(`[data-action="fx-wet"][data-effect="${effect}"]`).forEach(input=>input.value=state.mixer.effects[effect].wet);
   }
   $$('.library').forEach(el=>el.classList.toggle('tight-rows',state.library.dense));
-  $('.view-toggle').setAttribute('aria-pressed',String(state.library.dense));
-  if($('.search').value!==state.library.query) $('.search').value=state.library.query;
-  $('.load-target').value=state.library.target;
-  let count=0;const query=state.library.query.toLowerCase();
+  $$('.view-toggle').forEach(el=>el.setAttribute('aria-pressed',String(state.library.dense)));
+  $$('.search').forEach(el=>{if(el.value!==state.library.query)el.value=state.library.query;});
+  $$('.load-target').forEach(el=>el.value=state.library.target);
+  const query=state.library.query.toLowerCase();
   const localOrder=nativeAudio?orderedLibraryTracks(state):null,localVisible=new Set(localOrder?.map(t=>t.id));
   $$('tr[data-track-id]').forEach(row=>{
     const track=trackById(row.dataset.trackId),matches=nativeAudio?localVisible.has(track.id):(state.library.crate==='all'||track.genre===state.library.crate)&&[track.title,track.artist,track.genre,track.key,track.bpm].join(' ').toLowerCase().includes(query);
-    row.hidden=!matches;if(matches)count++;
+    row.hidden=!matches;
     row.classList.toggle('selected',state.decks[state.library.target].trackId===track.id);
     $('.load',row).setAttribute('aria-label','Load '+track.title+' into deck '+state.library.target);
   });
-  $('.track-count').textContent=count+(count===1?' track':' tracks');$('.empty').hidden=count!==0;
-  $('.crate-name').textContent=state.library.crate==='all'?'All tracks':state.library.crate;
+  $$('.library').forEach(el=>{const count=$$('tr[data-track-id]:not([hidden])',el).length;$('.track-count',el).textContent=count+(count===1?' track':' tracks');$('.empty',el).hidden=count!==0;});
+  $$('.crate-name').forEach(el=>el.textContent=state.library.crate==='all'?'All tracks':state.library.crate);
   $$('.crate').forEach(button=>button.classList.toggle('active',button.dataset.value===state.library.crate));
-  if(localOrder)for(const track of localOrder){const row=$(`tr[data-track-id="${track.id}"]`);if(row)row.parentElement.append(row);}
+  if(localOrder)for(const track of localOrder)for(const row of $$(`tr[data-track-id="${track.id}"]`))row.parentElement.append(row);
   $$('.grid-toggle').forEach(button=>button.setAttribute('aria-pressed',String(ui.grid)));
   $$('.wave-zoom').forEach(button=>button.setAttribute('aria-pressed',String(ui.detail)));
   $$('[data-action="all-cues"]').forEach(button=>button.setAttribute('aria-expanded',String(ui.cuesOpen)));
@@ -90,10 +93,12 @@ function update() {
 }
 function mount() {
   const focusAction=document.activeElement?.dataset?.action;
-  root.innerHTML=renderSession(store.get(),options[store.get().layout]);update();
+  editor?.beforeMount();
+  root.innerHTML=renderSession(store.get(),options[store.get().layout],store.getWorkspace(),editor?.ui,store.getWorkspaceHistory());update();
+  editor?.afterMount();
   if(focusAction==='layout') $('.layout-picker').focus({preventScroll:true});
 }
-store.subscribe((state,action)=>{if(action.type==='layout'||action.type==='load')mount();else update();});
+store.subscribe((state,action)=>{if(['layout','load','workspace'].includes(action.type))mount();else update();});
 function dispatch(action){if(!nativeAudio?.dispatch(action))store.dispatch(action);}
 
 root.addEventListener('click',event=>{
@@ -138,7 +143,11 @@ root.addEventListener('input',event=>{
 root.addEventListener('change',event=>{
   const input=event.target;
   libraryUI?.handleChange(input);
-  if(input.dataset.action==='layout')dispatch({type:'layout',value:input.value});
+  if(input.dataset.action==='layout'){
+    const value=input.value;
+    if(value==='canvas')store.dispatchWorkspace({type:'active',value:true});
+    else {if(store.getWorkspace().active)store.dispatchWorkspace({type:'active',value:false});dispatch({type:'layout',value});}
+  }
   if(input.dataset.action==='load-target')dispatch({type:'library',field:'target',value:input.value});
 });
 root.addEventListener('contextmenu',event=>{
@@ -147,7 +156,8 @@ root.addEventListener('contextmenu',event=>{
 root.addEventListener('keydown',event=>{
   const row=event.target.closest('tr[data-track-id]');if(row&&event.target===row&&event.key==='Enter'){$('.load',row).click();}
 });
-document.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'){event.preventDefault();$('.search').focus();}});
+document.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'){event.preventDefault();$('.search')?.focus();}});
+editor=new CanvasEditor(root,store,{redraw:mount,say:toast});
 nativeAudio=nativeBridge?new NativeSession(nativeBridge,store,{redraw:mount,say:toast}):null;
 if(nativeAudio){libraryUI=new LibraryController(nativeBridge,store,nativeAudio,{redraw:mount,say:toast,root});nativeAudio.libraryUI=libraryUI;}
 if(nativeAudio)nativeAudio.warning=nativeWarning;

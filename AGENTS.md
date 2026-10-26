@@ -17,8 +17,9 @@ Native source, virtual output and controller-host desktop tests are not target-m
 - `desktop/audio-client.cjs` owns the child, framing, native generation/sequence, watchdog, sanitized errors and operational-only environment.
 - `src/native.js` connects real receipts to the shared UI and prevents stale/superseded playback actions. Never simulate an audio clock or automatically replay after failure/reconnect.
 - `src/session.js` owns pure model transitions; `src/store.js` alone owns renderer snapshot persistence. Restore paused.
+- `src/workspace.js` owns bounded component/workspace schemas, pure presentation transitions and the offline agent kit. `canvas-view.js` / `canvas-editor.js` render existing shared controls and edit design data only. `canvas.css` is builder-specific. Preserve separate workspace persistence and never turn component JSON into executable HTML/CSS/code or native command bindings.
 - `src/components.js`, `views.js`, `main.js` share controls/layouts, not independent deck models.
-- `src/approved.css` is the exact historical approved stylesheet. Keep it unchanged; app/native-specific adjustments belong in `app.css` and `native.css`.
+- `src/approved.css` is the exact historical approved stylesheet. Keep it unchanged; app/native-specific adjustments belong in `app.css` and `native.css`, and builder-specific rules in `canvas.css`.
 
 A layout action must not alter musical state, unload hidden C/D, restart audio or reload the document. Unimplemented DSP/routing/analysis stays disabled and clearly described. Do not label placeholders as real analysis or UI flags as audible output.
 

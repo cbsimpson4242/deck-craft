@@ -1,6 +1,28 @@
 # Progress
 
-## Merged-release target deployment
+## Current: customizable component canvas and external-agent creator kit
+
+The approved first stage adds presentation customization over existing functionality, not new DSP or executable plugins. **Customize** / **Layout → Custom canvas** opens an initially empty workspace. The five original layouts and Studio Sync default remain intact; the builder offers editable starter arrangements based on them.
+
+Implemented:
+
+- Click/drag deck, mixer, browser, waveform, cue-bank, crossfader and explicitly disabled effects components into one scrollable canvas.
+- Move/resize with optional grid snapping, keyboard movement and numerical inspector fields; style colors, corners, density, scale and deck sections; bind existing deck parts to A/B/C/D.
+- Independent reusable component templates, named workspace presets, duplicate/remove, bounded Undo/Redo and a locked Perform surface.
+- Separate versioned workspace persistence in the existing sole renderer store, with independent persistent save warnings. Layout changes/removal do not alter musical state; restored playback remains paused.
+- Strict component/workspace JSON import, explicit validation and inert synthetic preview before apply; actual JSON export/downloads work in the browser and sandboxed Electron app.
+- Offline AI creator kit containing instructions, exact schemas, examples, capability reference and an executable dependency-free validator. Any external agent can use it without reverse-engineering application source or receiving private music/library/session data.
+- Repository-side kit/validate/static-preview tools and dedicated canvas browser regressions. See `docs/CUSTOM-CANVAS.md` for usage, formats, capacities and limits.
+
+Verification includes real Chromium pointer interactions and file/download workflows, original layout regressions, the exported validator, Rust/installer checks, real native PCM capture and Electron/native integration through an explicit private null sink. The desktop harness checks stable native engine/load generation while canvas views are added/styled/removed, canvas Play/Pause, safe kit download and paused restart. These are controller-host checks, not target-machine or physical-output acceptance.
+
+A user-local compatibility build has also been installed on the target, preserving the newer library implementation and native engine byte-for-byte. The installed manifest, rollback release, ordinary launcher, native Wayland window and child-engine identity were verified. The combined candidate passed 66 Node tests, original/canvas browser regressions, native signal capture and Electron integration with an explicit isolated sink. Live inspection found the installed app already in use, so verification did not interrupt playback or replace the user's current layout. Detailed installation receipts, state backups and screenshots remain private and outside source.
+
+Local source integration preserves the newer library/safety fixes and Performance console treatment. Pre-merge review reproduced a creator-preview/native-selector collision and real-catalog content appearing in browser previews. Preview contents now strip every semantic data attribute and explicitly render synthetic browser fixtures; focused regressions fail on the original defects. The corrected candidate passes 68 Node tests, six Rust tests, five installer tests, build/bundle syntax, both browser suites, all 18 isolated native signal checks and real Electron first-use/restart/offline integration, including validated previews during native reload/play/clock events and after dialog close. These preview corrections are source-only and have not been redeployed.
+
+Future customization work: arbitrary internal control composition, grouping, executable extensions, new controls/DSP, direct agent connections and a built-in AI assistant. Target portal/chooser lifecycle, physical output and hardware-latency acceptance remain pending; installation and a rendered Wayland window do not prove them. No publication or public push is implied by source integration.
+
+## Previous merged-release target deployment
 
 The reviewed merged release is now installed user-locally on the Omarchy target. Its exact package passed checksum/payload verification and isolated installed-app checks for native metadata inspection, collection persistence, paused restart and offline selected-track removal protection. The ordinary desktop entry opens one native Wayland application window with one native engine; the visible UI reports audio ready at 48,000 Hz and restored decks are paused. Independent target readback confirms all 186 payload files, unchanged private library bytes, a private-state backup and the previous release retained for rollback. Detailed deployment receipts remain outside source.
 
@@ -24,7 +46,7 @@ The Add folder dialog no longer receives an audio-file extension filter. On GTK,
 
 The 0.3.1 fix was deployed with the latest already-installed presentation update retained, rather than replacing it with an older theme. Its combined bundle passed browser and real Electron/native regressions. Target readback verified the fixed main-process source, installed payload, unchanged native engine and original private library, previous release retention, and a normal desktop-entry launch showing 0.3.1. The user subsequently confirmed folder navigation works; that confirmation and GTK component navigation do not establish full portal lifecycle acceptance. The runtime-composition and deployment receipts remain private.
 
-## Current: local library, crates and ordered playlists (0.3 preview)
+## Previous milestone: local library, crates and ordered playlists (0.3 preview)
 
 The desktop now exposes multi-file/folder import without loading a deck, real persistent named crates and ordered playlists, search/sort, multi-selection, add/remove membership, rename/delete and playlist order controls in every layout. Local tracks are the default library; synthetic fixtures are separately labeled and not playable. Library removal never deletes original music and refuses sources loaded/loading in decks.
 

@@ -224,6 +224,7 @@ async function run() {
         transitions++;
       }
     checks.push(transitions + " layout transitions preserve the same playing native source without reload");
+    await require('./canvas-desktop.cjs')({ js, command, until, checks, start, idA, dir, window });
     await js("document.querySelector('section.deck[data-deck=A] [data-field=playing]').click()");
     await until(async () => !(await command({ type: "status" })).snapshot.decks[0].playing, "UI pause");
     await js(
@@ -280,9 +281,9 @@ async function run() {
     '({width:innerWidth,scroll:document.documentElement.scrollWidth,choices:document.querySelector(".layout-picker").options.length,errors:[]})',
   );
   assert.ok(bounds.scroll <= bounds.width);
-  assert.equal(bounds.choices, 5);
+  assert.equal(bounds.choices, 6);
   assert.deepEqual(errors, []);
-  checks.push("Five choices, no horizontal overflow, no renderer errors");
+  checks.push("Five original layouts plus custom canvas, no horizontal overflow, no renderer errors");
   await fs.writeFile(
     path.join(dir, "desktop-" + phase + ".json"),
     JSON.stringify({ phase, checks, bounds, physicalDeviceTested: false }, null, 2),

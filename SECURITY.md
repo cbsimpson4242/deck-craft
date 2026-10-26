@@ -18,6 +18,13 @@ The source registry is mode 0600, written atomically under mode-0700 application
 
 Native file/folder selection is owned by the main process; multi-file import never accepts a path from renderer IPC. Directory traversal, candidate count, decoder time and output size are bounded, and directory symlinks are not followed. A separate one-shot native inspection mode reads identity-bound selected sources without opening an audio device or taking a deck. Its diagnostics and source paths are not forwarded. Crate/playlist names, membership and order are private registry data under the same byte limit. Removing collection membership or a library entry only changes the registry, never the selected music file. Collection changes/removals roll back on failed save; sources currently loaded/loading in decks cannot be forgotten.
 
+## Custom canvas and creator boundary
+
+Imported components/workspaces are bounded, versioned JSON, not executable plugins. Exact schemas reject unknown fields, code, arbitrary HTML/CSS, URLs, native command bindings, invalid colors/dimensions and duplicate item IDs. Plain-text names are escaped before rendering. Creator previews use labeled synthetic fixtures with disabled controls and no session action bindings. JSON changes invalidate review; applying an imported workspace requires explicit replacement confirmation. The component system adds no listener, renderer Node access or arbitrary-path API.
+
+Workspace designs are saved separately from musical state by the existing renderer store. Removing/rebinding a view never unloads its source or changes audio routing. Exported kits/designs contain layout/style data and bundled documentation only, not private music/library/session metadata. Creator-selected names may still be personal; review exports before sharing. Imported data should be treated as untrusted by external agents too.
+
+
 ## Installer and build boundary
 
 No sudo, OS package installation, service creation, OS-volume change, music deletion or automatic running-app restart occurs. The small installer fetches a pinned official Electron release via HTTPS and verifies its checksum; an exact ZIP may be supplied offline. It validates payload paths/hashes, preserves runtime/dependency notices, refuses unrelated launchers and uses versioned user-local releases with rollback. Packaging copies only explicit reviewed runtime source/assets, never a working directory's ignored logs, recordings or user state.

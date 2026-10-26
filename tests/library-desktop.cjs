@@ -35,7 +35,7 @@ module.exports=async function checkLibrary({js,command,until,checks,idA,phase,ex
  assert.equal(now.decks[0].playing,true);
  checks.push('Add files uses real native metadata inspection without changing any deck');
  await click('[data-action="library-import"][data-kind="folder"]');
- await until(()=>js("document.querySelector('.library-feedback').textContent.includes('already in library')"),'recursive folder import summary');
+ await until(()=>js("document.querySelector('.library-feedback').textContent.includes('1 failed')"),'new recursive folder import summary, not the previous files-import receipt');
  await until(()=>js("!document.querySelector('[data-action=library-import]').disabled"),'folder import complete');
  library=await read();assert.equal(library.tracks.length,2);
  assert.match(await js("document.querySelector('.library-feedback').textContent"),/1 failed/);
