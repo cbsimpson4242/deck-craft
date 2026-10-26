@@ -1,6 +1,6 @@
 {
   "name": "deck-craft",
-  "version": "0.2.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "description": "Open-source DJ desktop and native audio foundation",

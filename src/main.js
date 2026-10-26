@@ -3,11 +3,13 @@ import { NativeSession, restoreNativeCatalog } from './native.js';
 import { createStore } from './store.js';
 import { createViewOptions, renderSession } from './views.js';
 import { icon, timeLabel } from './components.js';
+import { LibraryController, orderedLibraryTracks } from './library.js';
 
 const root=document.getElementById('app');
 const nativeBridge=globalThis.deckCraftNative||null;
 const nativeWarning=await restoreNativeCatalog(nativeBridge);
 let nativeAudio=null;
+let libraryUI=null;
 const store=createStore({getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value)});
 const options=Object.fromEntries(LAYOUTS.map(layout=>[layout.id,createViewOptions()]));
 const $=(selector,parent=root)=>parent.querySelector(selector);
@@ -64,8 +66,9 @@ function update() {
   if($('.search').value!==state.library.query) $('.search').value=state.library.query;
   $('.load-target').value=state.library.target;
   let count=0;const query=state.library.query.toLowerCase();
+  const localOrder=nativeAudio?orderedLibraryTracks(state):null,localVisible=new Set(localOrder?.map(t=>t.id));
   $$('tr[data-track-id]').forEach(row=>{
-    const track=trackById(row.dataset.trackId),matches=(state.library.crate==='all'||track.genre===state.library.crate)&&[track.title,track.artist,track.genre,track.key,track.bpm].join(' ').toLowerCase().includes(query);
+    const track=trackById(row.dataset.trackId),matches=nativeAudio?localVisible.has(track.id):(state.library.crate==='all'||track.genre===state.library.crate)&&[track.title,track.artist,track.genre,track.key,track.bpm].join(' ').toLowerCase().includes(query);
     row.hidden=!matches;if(matches)count++;
     row.classList.toggle('selected',state.decks[state.library.target].trackId===track.id);
     $('.load',row).setAttribute('aria-label','Load '+track.title+' into deck '+state.library.target);
@@ -73,6 +76,7 @@ function update() {
   $('.track-count').textContent=count+(count===1?' track':' tracks');$('.empty').hidden=count!==0;
   $('.crate-name').textContent=state.library.crate==='all'?'All tracks':state.library.crate;
   $$('.crate').forEach(button=>button.classList.toggle('active',button.dataset.value===state.library.crate));
+  if(localOrder)for(const track of localOrder){const row=$(`tr[data-track-id="${track.id}"]`);if(row)row.parentElement.append(row);}
   $$('.grid-toggle').forEach(button=>button.setAttribute('aria-pressed',String(ui.grid)));
   $$('.wave-zoom').forEach(button=>button.setAttribute('aria-pressed',String(ui.detail)));
   $$('[data-action="all-cues"]').forEach(button=>button.setAttribute('aria-expanded',String(ui.cuesOpen)));
@@ -82,6 +86,7 @@ function update() {
   $$('[data-action="pair"]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.value===state.pair)));
   $$('.wave-group').forEach(group=>group.hidden=group.dataset.group!==state.pair);
   nativeAudio?.paint();
+  libraryUI?.paint();
 }
 function mount() {
   const focusAction=document.activeElement?.dataset?.action;
@@ -93,6 +98,7 @@ function dispatch(action){if(!nativeAudio?.dispatch(action))store.dispatch(actio
 
 root.addEventListener('click',event=>{
   const target=event.target.closest('button[data-action]');if(!target||!root.contains(target))return;
+  if(libraryUI?.handleClick(target))return;
   const state=store.get(),ui=options[state.layout],id=target.dataset.deck,field=target.dataset.field;
   switch(target.dataset.action) {
     case 'import-audio':nativeAudio?.importAudio(store.get().library.target);break;
@@ -131,6 +137,7 @@ root.addEventListener('input',event=>{
 });
 root.addEventListener('change',event=>{
   const input=event.target;
+  libraryUI?.handleChange(input);
   if(input.dataset.action==='layout')dispatch({type:'layout',value:input.value});
   if(input.dataset.action==='load-target')dispatch({type:'library',field:'target',value:input.value});
 });
@@ -142,6 +149,7 @@ root.addEventListener('keydown',event=>{
 });
 document.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'){event.preventDefault();$('.search').focus();}});
 nativeAudio=nativeBridge?new NativeSession(nativeBridge,store,{redraw:mount,say:toast}):null;
+if(nativeAudio){libraryUI=new LibraryController(nativeBridge,store,nativeAudio,{redraw:mount,say:toast,root});nativeAudio.libraryUI=libraryUI;}
 if(nativeAudio)nativeAudio.warning=nativeWarning;
 mount();
 await nativeAudio?.initialize();

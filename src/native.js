@@ -1,4 +1,4 @@
-import { DECK_IDS, trackById, registerLocalTrack } from "./catalog.js";
+import { DECK_IDS, trackById, registerLocalTrack, replaceLocalLibrary } from "./catalog.js";
 import { icon, timeLabel } from "./components.js";
 
 const nativeErrors = {
@@ -17,7 +17,7 @@ export async function restoreNativeCatalog(bridge) {
   if (!bridge) return;
   const result = await bridge.command({ type: "library" });
   if (!result.ok) throw Error(result.error);
-  for (const track of result.tracks) registerLocalTrack(track);
+  replaceLocalLibrary(result.tracks, result.collections || []);
   return result.warning || "";
 }
 
@@ -40,7 +40,8 @@ export class NativeSession {
     this.initialized = false;
     this.warning = "";
     bridge.onEvent((event) => {
-      if (event.type === "state") this.accept(event.snapshot, true);
+      if (event.type === "import-progress") this.libraryUI?.progress(event);
+      else if (event.type === "state") this.accept(event.snapshot, true);
       else if (event.type === "track") {
         try {
           registerLocalTrack(event.track);
@@ -115,6 +116,12 @@ export class NativeSession {
     this.initialized = false;
     const saved = structuredClone(this.store.get());
     try {
+      // Preserve selected-source ownership even when status is offline and no
+      // native load can run. Reconnect must not discard those references.
+      for (const id of DECK_IDS) {
+        if (trackById(saved.decks[id].trackId)?.local)
+          await this.call({ type: "retain-track", deck: id, trackId: saved.decks[id].trackId });
+      }
       const result = await this.bridge.command({ type: "status" });
       if (result.snapshot) this.accept(result.snapshot, true);
       if (!this.status.ready) {
@@ -301,22 +308,24 @@ export class NativeSession {
       bar = document.createElement("div");
       bar.className = "native-audio-bar";
       bar.innerHTML =
-        '<span class="native-audio-state" role="status"></span><button data-action="reconnect-audio">Reconnect audio</button><button class="native-import" data-action="import-audio">Import audio</button>';
+        '<span class="native-audio-state" role="status"></span><button data-action="reconnect-audio">Reconnect audio</button><button data-action="library-import" data-kind="files">Add files to library</button><button class="native-import" data-action="import-audio">Import audio</button>';
       document.querySelector(".persistence-warning").after(bar);
     }
     const ready = this.status.ready;
     bar.querySelector(".native-audio-state").textContent = this.busy.size
       ? "Loading local audio…"
       : ready
-        ? "Native audio · " + (this.status.output?.sampleRate || "—") + " Hz · files stay on this device"
-        : "Audio output unavailable · check your device and reconnect";
+        ? "Audio ready · default Linux output · " + (this.status.output?.sampleRate || "—") + " Hz · load a local track, then press Play"
+        : this.status.error === "audio_engine_unavailable"
+          ? "Audio engine could not start · check your desktop installation. Library import remains available."
+          : "Audio output unavailable · check your device and reconnect. You can still organize your library.";
     bar.querySelector('[data-action="reconnect-audio"]').hidden = ready;
     const button = bar.querySelector(".native-import");
-    button.textContent = "Import audio → Deck " + state.library.target;
+    button.textContent = "Open file → Deck " + state.library.target;
     button.disabled = !!this.busy.size || !ready || !this.initialized;
     for (const el of document.querySelectorAll(".engine-label")) el.textContent = ready ? "NATIVE AUDIO" : "OUTPUT OFFLINE";
     const version = document.querySelector(".wordmark small");
-    if (version) version.textContent = "0.2";
+    if (version) version.textContent = "0.3.1";
     for (const el of document.querySelectorAll(".mobile-engine-notice")) el.textContent = "NATIVE FILE PLAYBACK · ADVANCED DSP PENDING";
     for (const el of document.querySelectorAll(
       '[data-field="sync"],[data-field="headphone"],[data-field="loopEnabled"],[data-field="pitch"],[data-action="loop-size"],[data-action="toggle-fx"],[data-action="fx-wet"],[data-field="gain"],[data-field="hi"],[data-field="mid"],[data-field="low"],[data-field="filter"]',

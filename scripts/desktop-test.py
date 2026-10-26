@@ -49,10 +49,15 @@ with open(directory / 'desktop-runtime.log', 'wb') as log:
         display_name = ':' + display.stdout.readline().decode().strip()
         if display_name == ':':
             raise RuntimeError('Private Xvfb did not start')
-        for phase in ['first', 'restore']:
+        phases = ['first', 'restore'] if os.environ.get('DECKCRAFT_TEST_NATIVE_DIALOG') == '1' else ['first', 'restore', 'offline']
+        for phase in phases:
             env = {**base_env, 'DISPLAY': display_name, 'DECKCRAFT_TEST_DIR': str(directory), 'DECKCRAFT_TEST_PHASE': phase,
                    'XDG_RUNTIME_DIR': str(runtime), 'XDG_CACHE_HOME': str(directory / 'cache'),
                    'XDG_CONFIG_HOME': str(directory / 'config'), 'XDG_DATA_HOME': str(directory / 'data')}
+            if phase == 'offline':
+                unavailable = directory / 'unavailable-output.conf'
+                unavailable.write_text('pcm.!default { type deckcraft_test_unavailable }\n')
+                env['ALSA_CONFIG_PATH'] = str(unavailable)
             bus = subprocess.Popen(['dbus-daemon', '--session', '--nofork', '--nopidfile', '--address=unix:path=' + str(runtime / ('bus-' + phase)), '--print-address=1'], env=env, stdout=subprocess.PIPE, stderr=log, start_new_session=True)
             services.append(bus)
             assert bus.stdout is not None

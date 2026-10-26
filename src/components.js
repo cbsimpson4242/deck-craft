@@ -1,4 +1,5 @@
 import { TRACKS, LAYOUTS, DECK_IDS, trackById, allTracks } from './catalog.js';
+import { nativeLibrary } from './library.js';
 
 export const escapeHTML = value => String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const timeLabel = (seconds,decimal=false) => {
@@ -90,6 +91,7 @@ function crateButton(genre,label,state) {
   return `<button class="crate ${state.library.crate===genre?'active':''}" data-action="crate" data-value="${genre}">${escapeHTML(label)}<small>${count}</small></button>`;
 }
 export function library(state,{rail=false,compact=false}={}) {
+  if(globalThis.deckCraftNative) return nativeLibrary(state);
   const railHTML=rail?`<aside class="collection-rail"><div class="rail-heading">COLLECTION</div>${[['all','All tracks'],['Deep House','Deep house'],['Minimal','Minimal'],['Tech House','Peak time'],['Ambient','After hours']].map(([genre,label])=>crateButton(genre,label,state)).join('')}<div class="rail-heading second">DEMO LIBRARY</div><div class="rail-note">${icon('music')}Original synthetic tracks</div><div class="rail-bottom">No files uploaded<small>No audio engine connected</small></div></aside>`:'';
   const chips=!rail?`<div class="collection-chips">${[['all','All tracks'],['Deep House','Deep house'],['Minimal','Minimal']].map(([genre,label])=>crateButton(genre,label,state)).join('')}</div>`:'';
   const rows=allTracks().map((t,i)=>`<tr data-track-id="${t.id}" data-genre="${t.genre}" tabindex="0"><td class="track-no">${String(i+1).padStart(2,'0')}</td><td class="name-cell">${sleeve(t,'thumb')}<div><b>${escapeHTML(t.title)}</b><span>${escapeHTML(t.artist)}</span></div></td><td class="artist-cell">${escapeHTML(t.artist)}</td><td class="bpm-cell">${t.bpm.toFixed(2)}</td><td><span class="key key-${i%4}">${t.key}</span></td><td class="genre-cell">${t.genre}</td><td class="time-cell">${timeLabel(t.duration)}</td><td class="load-cell"><button class="load" data-action="load" data-track="${t.id}" aria-label="Load ${escapeHTML(t.title)} into selected deck">${icon('arrow')}</button></td></tr>`).join('');

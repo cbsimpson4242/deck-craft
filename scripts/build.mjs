@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const modules=['catalog.js','session.js','store.js','components.js','views.js','native.js','main.js'];
+const modules=['catalog.js','session.js','store.js','components.js','library.js','views.js','native.js','main.js'];
 let code='';
 for(const filename of modules) {
   const source=await readFile(path.join(root,'src',filename),'utf8');

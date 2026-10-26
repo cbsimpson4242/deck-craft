@@ -22,11 +22,24 @@ export const TRACKS = Object.freeze([
   { id:'half-remembered', title:'Half Remembered', artist:'Field Theory', bpm:125, key:'9A', duration:406, genre:'Minimal', color:'#92ae99' }
 ]);
 const localTracks = new Map();
+let collections = [];
+export const libraryCollections = () => collections;
+export function replaceLocalLibrary(tracks, groups = [], protectedIds = []) {
+ const next=new Map(tracks.map(track=>{const safe=safeLocalTrack(track);return [safe.id,safe];}));
+ if(protectedIds.some(id=>localTracks.has(id)&&!next.has(id)))throw Error('Library update would remove a selected deck track. Reload the application to reconcile the library.');
+ const nextCollections=groups.map(c=>({id:c.id,kind:c.kind,name:c.name,trackIds:[...c.trackIds]}));
+ localTracks.clear();
+ for(const [id,track] of next)localTracks.set(id,track);
+ collections=nextCollections;
+}
 export const allTracks = () => [...TRACKS,...localTracks.values()];
-export function registerLocalTrack(track) {
+function safeLocalTrack(track) {
  if(!track || !/^local-[0-9a-f-]{36}$/.test(track.id) || typeof track.title!=='string' || !Number.isFinite(track.duration) || track.duration<=0 || track.duration>7200)throw Error('Invalid local track');
  const peaks=Array.isArray(track.peaks)&&track.peaks.length===512&&track.peaks.every(n=>Number.isFinite(n)&&n>=0&&n<=1)?track.peaks.slice():[];
  const safe={id:track.id,title:track.title.slice(0,512),artist:'Local audio',genre:'Local files',bpm:0,key:'—',duration:track.duration,color:'#96c7a8',local:true,peaks};
- localTracks.set(safe.id,safe);return safe;
+ return safe;
+}
+export function registerLocalTrack(track) {
+ const safe=safeLocalTrack(track);localTracks.set(safe.id,safe);return safe;
 }
 export const trackById = id => localTracks.get(id) || TRACKS.find(track => track.id === id);

@@ -7,11 +7,23 @@ const ID = /^local-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 const LIMIT = 512 * 1024 * 1024;
 const SNAPSHOT_LIMIT = 16 * 1024 * 1024;
 const RECORD_LIMIT = 10000;
+const COLLECTION_ID = /^collection-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+function validCollections(collections, records) {
+  return Array.isArray(collections) && collections.length <= 200 &&
+    new Set(collections.map(c => c?.id)).size === collections.length &&
+    collections.reduce((n, c) => n + (c?.trackIds?.length || 0), 0) <= 20000 &&
+    collections.every(c => c && COLLECTION_ID.test(c.id) && ["crate", "playlist"].includes(c.kind) &&
+      typeof c.name === "string" && c.name.trim().length > 0 && c.name.length <= 80 &&
+      Array.isArray(c.trackIds) && c.trackIds.length <= RECORD_LIMIT && new Set(c.trackIds).size === c.trackIds.length &&
+      c.trackIds.every(id => ID.test(id) && validRecord(records.get(id))));
+}
 // Build only a bounded snapshot, before touching the previous durable registry.
-function snapshotText(records) {
+function snapshotText(records, collections = []) {
   if (records.size > RECORD_LIMIT) throw Error("library_capacity");
+  if (!validCollections(collections, records)) throw Error("invalid_collection");
+  const ending = collections.length ? '],"collections":' + JSON.stringify(collections) + '}' : "]}";
   const chunks = ['{"version":1,"tracks":['];
-  let bytes = Buffer.byteLength(chunks[0]) + 2; // closing ]}
+  let bytes = Buffer.byteLength(chunks[0]) + Buffer.byteLength(ending);
   let count = 0;
   for (const r of records.values()) {
     if (!validRecord(r)) continue; // selections awaiting native metadata are not durable yet
@@ -29,7 +41,7 @@ function snapshotText(records) {
     if (bytes > SNAPSHOT_LIMIT) throw Error("library_capacity");
     chunks.push(chunk);
   }
-  return chunks.join("") + "]}";
+  return chunks.join("") + ending;
 }
 function publicTrack(r) {
   return {
@@ -76,6 +88,7 @@ class LocalLibrary {
     this.directory = directory;
     this.filename = path.join(directory, "library.json");
     this.records = new Map();
+    this.collections = [];
     this.warning = "";
     this.saveChain = Promise.resolve();
   }
@@ -105,9 +118,13 @@ class LocalLibrary {
         if (!validRecord(record)) throw Error("invalid");
         this.records.set(record.id, record);
       }
+      const collections = saved.collections ?? [];
+      if (!validCollections(collections, this.records)) throw Error("invalid");
+      this.collections = collections.map(c => ({ id: c.id, name: c.name, kind: c.kind, trackIds: [...c.trackIds] }));
     } catch (error) {
       if (error.code !== "ENOENT") {
         this.records.clear();
+        this.collections = [];
         this.warning = "Saved local library could not be restored. Import your files again; no file has been deleted.";
       }
     }
@@ -151,6 +168,57 @@ class LocalLibrary {
   list() {
     return [...this.records.values()].filter(validRecord).map(publicTrack);
   }
+  changeCollection(request) {
+    const operation = this.saveChain.then(async () => {
+      const previous = this.collections;
+      const next = structuredClone(previous);
+      let collection = next.find(c => c.id === request.id);
+      if (request.type === "collection-create") {
+        collection = { id: "collection-" + randomUUID(), kind: request.kind, name: request.name.trim(), trackIds: [] };
+        next.push(collection);
+      } else {
+        if (!collection) throw Error("unknown_collection");
+        switch (request.type) {
+          case "collection-rename": collection.name = request.name.trim(); break;
+          case "collection-delete": next.splice(next.indexOf(collection), 1); break;
+          case "collection-add": collection.trackIds = [...new Set([...collection.trackIds, ...request.trackIds])]; break;
+          case "collection-remove": collection.trackIds = collection.trackIds.filter(id => !request.trackIds.includes(id)); break;
+          case "collection-move": {
+            if (collection.kind !== "playlist" || ![-1, 1].includes(request.direction)) throw Error("invalid_collection");
+            const from = collection.trackIds.indexOf(request.trackId), to = from + request.direction;
+            if (from < 0) throw Error("unknown_local_track");
+            if (to >= 0 && to < collection.trackIds.length) [collection.trackIds[from], collection.trackIds[to]] = [collection.trackIds[to], collection.trackIds[from]];
+            break;
+          }
+          default: throw Error("invalid_command");
+        }
+      }
+      if (!validCollections(next, this.records)) throw Error("invalid_collection");
+      this.collections = next;
+      if (!(await this.writeSnapshot())) {
+        this.collections = previous;
+        throw Error("library_save_failed");
+      }
+      return structuredClone(collection);
+    });
+    this.saveChain = operation.catch(() => {});
+    return operation;
+  }
+  forget(ids) {
+    const operation = this.saveChain.then(async () => {
+      ids.forEach(id => this.get(id));
+      const previous = this.records, collections = this.collections;
+      this.records = new Map([...previous].filter(([id]) => !ids.includes(id)));
+      this.collections = collections.map(c => ({ ...c, trackIds: c.trackIds.filter(id => !ids.includes(id)) }));
+      if (!(await this.writeSnapshot())) {
+        this.records = previous;
+        this.collections = collections;
+        throw Error("library_save_failed");
+      }
+    });
+    this.saveChain = operation.catch(() => {});
+    return operation;
+  }
   save() {
     this.saveChain = this.saveChain.then(() => this.writeSnapshot());
     return this.saveChain;
@@ -158,7 +226,7 @@ class LocalLibrary {
   async writeSnapshot() {
     const temporary = path.join(this.directory, ".library-" + randomUUID() + ".tmp");
     try {
-      const text = snapshotText(this.records);
+      const text = snapshotText(this.records, this.collections);
       await fs.mkdir(this.directory, { recursive: true, mode: 0o700 });
       const file = await fs.open(temporary, "wx", 0o600);
       try {
@@ -180,4 +248,4 @@ class LocalLibrary {
     }
   }
 }
-module.exports = { LocalLibrary, publicTrack, ID };
+module.exports = { LocalLibrary, publicTrack, ID, COLLECTION_ID };

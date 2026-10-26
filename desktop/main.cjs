@@ -5,6 +5,7 @@ const fs = require("node:fs/promises");
 const { createHash } = require("node:crypto");
 const { AudioClient } = require("./audio-client.cjs");
 const { LocalLibrary } = require("./library.cjs");
+const { inspectAudio, importSelection } = require("./importer.cjs");
 const { APP_URL, validateIPC, authorize } = require("./policy.cjs");
 protocol.registerSchemesAsPrivileged([{ scheme: "deckcraft", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
@@ -81,6 +82,11 @@ async function startDesktop({ userData, enginePath, chooseFile, show = true } = 
   let quitting = false;
   let reconnecting = false;
   let picking = false;
+  let editingLibrary = false;
+  const loadingTracks = new Map();
+  // Renderer-selected tracks can outlive an unavailable/restarted audio child.
+  // This is a bounded coordinator reference, not native transport authority.
+  const retainedTracks = new Map();
   const notify = (message) => {
     if (!window.isDestroyed()) window.webContents.send("deckcraft:event", message);
   };
@@ -111,13 +117,20 @@ async function startDesktop({ userData, enginePath, chooseFile, show = true } = 
   async function load(deck, trackId, client = audio) {
     if (client !== audio) throw Error("audio_source_changed");
     const r = library.get(trackId);
-    const snapshot = await client.request({ type: "load", deck, trackId: r.id, path: r.path, identity: r.identity });
-    if (client !== audio) throw Error("audio_source_changed");
-    const native = snapshot.decks.find((d) => d.id === deck);
-    if (native?.trackId !== trackId) throw Error("load_cancelled");
-    const track = library.commit(trackId, native);
-    const saved = await library.save();
-    return { track, snapshot, warning: saved ? "" : library.warning };
+    loadingTracks.set(trackId, (loadingTracks.get(trackId) || 0) + 1);
+    try {
+      const snapshot = await client.request({ type: "load", deck, trackId: r.id, path: r.path, identity: r.identity });
+      if (client !== audio) throw Error("audio_source_changed");
+      const native = snapshot.decks.find((d) => d.id === deck);
+      if (native?.trackId !== trackId) throw Error("load_cancelled");
+      const track = library.commit(trackId, native);
+      retainedTracks.set(deck, trackId);
+      const saved = await library.save();
+      return { track, snapshot, warning: saved ? "" : library.warning };
+    } finally {
+      const count = loadingTracks.get(trackId) - 1;
+      if (count) loadingTracks.set(trackId, count); else loadingTracks.delete(trackId);
+    }
   }
   ipcMain.handle("deckcraft:command", async (event, raw) => {
     if (!authorize(event, window)) return { ok: false, error: "unauthorized_frame" };
@@ -126,13 +139,61 @@ async function startDesktop({ userData, enginePath, chooseFile, show = true } = 
       let result;
       switch (request.type) {
         case "library":
-          result = { tracks: library.list(), warning: library.warning };
+          result = { tracks: library.list(), collections: library.collections, warning: library.warning };
           break;
         case "status":
           result = { snapshot: audio.snapshot };
           break;
+        case "retain-track":
+          if (editingLibrary) throw Error("library_busy");
+          library.get(request.trackId);
+          retainedTracks.set(request.deck, request.trackId);
+          result = {};
+          break;
+        case "import": {
+          if (picking || editingLibrary) throw Error("library_busy");
+          picking = true;
+          try {
+            const options = {
+              title: request.kind === "folder" ? "Add music folder to library" : "Add audio files to library",
+              properties: request.kind === "folder" ? ["openDirectory"] : ["openFile", "multiSelections"],
+              // GTK disables directory rows when an audio-file filter is used
+              // with SELECT_FOLDER. Folder navigation must remain unfiltered.
+              ...(request.kind === "folder" ? {} : { filters: [{ name: "Audio files", extensions: ["wav", "mp3", "flac", "ogg", "m4a", "aac", "aiff", "aif"] }] }),
+            };
+            const selected = chooseFile ? await chooseFile(window, options) : await dialog.showOpenDialog(window, options);
+            if (selected.canceled || !selected.filePaths?.length) { result = { cancelled: true }; break; }
+            result = await importSelection(library, selected.filePaths, {
+              folder: request.kind === "folder", inspect: record => inspectAudio(binary, record),
+              progress: progress => notify({ type: "import-progress", ...progress }),
+            });
+            // A renderer catalog replacement must include tracks outside this batch,
+            // especially sources already loaded in the four native decks.
+            result.tracks = library.list();
+            result.collections = library.collections;
+          } finally { picking = false; }
+          break;
+        }
+        case "collection-create":
+        case "collection-rename":
+        case "collection-delete":
+        case "collection-add":
+        case "collection-remove":
+        case "collection-move":
+        case "forget": {
+          if (picking || editingLibrary) throw Error("library_busy");
+          editingLibrary = true;
+          try {
+            if (request.type === "forget") {
+              if (request.trackIds.some(id => loadingTracks.has(id) || [...retainedTracks.values()].includes(id)) || audio.snapshot.decks.some(d => request.trackIds.includes(d.trackId))) throw Error("track_in_use");
+              await library.forget(request.trackIds);
+            } else result = { collection: await library.changeCollection(request) };
+            result = { ...result, tracks: library.list(), collections: library.collections, warning: library.warning };
+          } finally { editingLibrary = false; }
+          break;
+        }
         case "pick": {
-          if (picking) throw Error("file_dialog_open");
+          if (picking || editingLibrary) throw Error("library_busy");
           picking = true;
           try {
             const pickerClient = audio;
@@ -164,6 +225,7 @@ async function startDesktop({ userData, enginePath, chooseFile, show = true } = 
           break;
         }
         case "load":
+          if (editingLibrary) throw Error("library_busy");
           result = await load(request.deck, request.trackId);
           break;
         case "reconnect":

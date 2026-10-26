@@ -13,7 +13,7 @@ function initialDeck(track) {
   return {trackId:track.id,position:92.4,playing:false,cues:[0,48,136,208],loopLength:8,loopEnabled:false,pitch:0,sync:false,headphone:false,gain:50,hi:50,mid:50,low:50,filter:50,level:78};
 }
 export function createSession() {
-  return {version:1,layout:DEFAULT_LAYOUT,decks:Object.fromEntries(DECK_IDS.map((id,i)=>[id,initialDeck(TRACKS[i])])),mixer:{crossfader:50,effects:{echo:{enabled:false,wet:25},space:{enabled:false,wet:20}}},library:{query:'',crate:'all',target:'A',dense:false},mode:'perform',pair:'ab'};
+  return {version:1,layout:DEFAULT_LAYOUT,decks:Object.fromEntries(DECK_IDS.map((id,i)=>[id,initialDeck(TRACKS[i])])),mixer:{crossfader:50,effects:{echo:{enabled:false,wet:25},space:{enabled:false,wet:20}}},library:{query:'',crate:'all',target:'A',dense:false,sort:'title'},mode:'perform',pair:'ab'};
 }
 
 /** One semantic session. A layout transition changes presentation only. */
@@ -39,7 +39,7 @@ export function reduceSession(state,action) {
   if (action.type === 'pair') return ['ab','cd'].includes(action.value) ? {...state,pair:action.value} : state;
   if (action.type === 'library') {
     const {field,value}=action;
-    const valid = (field==='query'&&typeof value==='string') || (field==='crate'&&['all',...TRACKS.map(t=>t.genre)].includes(value)) || (field==='target'&&DECK_IDS.includes(value)) || (field==='dense'&&typeof value==='boolean');
+    const valid = (field==='query'&&typeof value==='string') || (field==='crate'&&typeof value==='string'&&(['all','demo',...TRACKS.map(t=>t.genre)].includes(value)||/^collection-[0-9a-f-]{36}$/.test(value))) || (field==='target'&&DECK_IDS.includes(value)) || (field==='dense'&&typeof value==='boolean') || (field==='sort'&&['title','duration','order'].includes(value));
     return valid ? {...state,library:{...state.library,[field]:field==='query'?value.slice(0,240):value}} : state;
   }
   if (action.type === 'mixer') return action.field==='crossfader' && finite(action.value) ? {...state,mixer:{...state.mixer,crossfader:clamp(action.value,0,100)}} : state;
@@ -105,7 +105,7 @@ export function restoreSession(text) {
       }
     }
   }
-  if(object(saved.library)) for(const field of ['query','crate','target','dense']) {
+  if(object(saved.library)) for(const field of ['query','crate','target','dense','sort']) {
     const updated=reduceSession(state,{type:'library',field,value:saved.library[field]});state.library=updated.library;
   }
   return {state,recovered};
