@@ -6,7 +6,7 @@ An open-source DJ application built around professional workflows, reliable perf
 
 **Current milestone: a Linux desktop preview with a separate native Rust audio engine.** Import local audio, load a deck, play/pause/seek, store manual cues, change channel levels and use the A/B crossfader. All five approved layouts share the same four-deck session.
 
-**Omarchy is the first target, not a verified deployment claim:** installation, the actual Wayland/portal integration, physical output and hardware latency still need acceptance on the target machine. This is not yet a Serato/Traktor replacement. EQ, FX, loops, sync, beat/key detection, time stretching, signal meters, headphone routing and controller integration are **not implemented**; those controls are disabled in the desktop app.
+**Omarchy is the first target:** user-local installation and ordinary graphical-session launch have been exercised. Native file-chooser/portal behavior, physical output and hardware latency still need acceptance on the target machine. This is not yet a Serato/Traktor replacement. EQ, FX, loops, sync, beat/key detection, time stretching, signal meters, headphone routing and controller integration are **not implemented**; those controls are disabled in the desktop app.
 
 ## Run the native desktop preview
 
@@ -61,6 +61,8 @@ Selected music remains at its original location and is untouched. Private librar
 
 ## One session, five layouts
 
+All five layouts use the selected **Performance console** visual treatment: dark surfaces, larger transport clocks and stable deck identities (A lime, B cyan, C amber, D violet). These colors identify decks; they do not represent frequency analysis or measured signal levels.
+
 Use the **Layout** dropdown:
 
 - **Signal One** — two decks, track overviews, cue banks and side mixer.
@@ -80,6 +82,8 @@ The private library is bounded by 10,000 records **and 16 MiB of serialized UTF-
 `npm run build` still creates `dist/deck-craft.html`, an offline browser UI with no audio engine. Do not confuse it with the native desktop package. Source UI development can use `python3 -m http.server 4785 --bind 127.0.0.1`; never expose that development file server to a network without a separate review.
 
 The [Round 03 comparison](designs/round-three/deck-craft-refinements-03.html), [Round 02 exploration](designs/round-two/deck-craft-studies-02.html) and historical [Round 01 comparison](designs/deck-craft-comparison.html) are preserved unchanged.
+
+The new [Precision / Performance visual comparison](sketches/006-console-comparison/index.html) explores two treatments of the same Studio Sync workspace. Open it directly in a browser and switch A/B without resetting the mock session; Empty, Loaded and Playing provide state presets. These offline, synthetic, no-audio studies do not change the desktop app or select a replacement for any of its five layouts.
 
 ## Verification
 

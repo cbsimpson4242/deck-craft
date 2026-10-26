@@ -4,7 +4,7 @@
 
 The approved first vertical slice is an installed Omarchy desktop app that opens local audio, loads a deck and actually plays, pauses and seeks through the default output, retaining all five views and shared state.
 
-The implementation is a **Linux preview**. Source, native signal output and desktop integration can be tested independently of the target laptop. Target-machine installation, Wayland/portal behavior, actual physical output and hardware latency remain pending until the machine is available. Other operating systems and professional-DJ parity are not claimed.
+The implementation is a **Linux preview**. Source, native signal output and desktop integration can be tested independently of the target machine. User-local installation and an ordinary application-menu launch in the actual Omarchy graphical session have now been verified for the visual update. The existing newer import/library backend was preserved byte-for-byte, the saved library remained unchanged, and restoration stayed paused. Native file-chooser/portal behavior, actual physical output and hardware latency remain pending. Other operating systems and professional-DJ parity are not claimed.
 
 Supported first-slice controls: import a local source, load A/B/C/D, play/pause, seek, manual cue positions, channel levels and an equal-power A/B crossfader. C/D feed the same master directly. Master headroom is deliberately conservative; this is not a calibrated loudness or limiter implementation. Gain/EQ/filter, FX, sync, time stretch, loops, beat/key detection, VU meters, headphone cue routing and hardware mappings are disabled/unimplemented.
 

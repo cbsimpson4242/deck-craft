@@ -1,6 +1,15 @@
 # Application UI verification
 
-## Executed checks
+## Performance console visual pass
+
+- The selected B treatment is applied to the actual shared application, not an embedded study. All five layouts retain their existing controls and shared state. A/B/C/D accents remain consistent when switching views; colors identify decks, not analyzed frequency bands.
+- **47 Node tests, six Rust tests and five installer tests passed.** The added deck-identity regression first rejected the previous layout-dependent palette. Existing native ownership, persistence, warning and authority regressions remain green.
+- **UI build and bundled-script syntax passed.** The actual offline build was exercised in Chromium; no source-only style injection is part of the delivered build.
+- **25 ordered transitions and 30 responsive cases passed.** Viewports: 1920×1080, 1440×900, 1366×768, 1280×720, 390×844 and 360×844. Assertions include the Performance palette, deck-contained transport/clocks/cues, no collection horizontal overflow, unclipped loading actions, layout picker and four-channel mixer access. Existing reload/restart, paused restore, hidden-deck, persistence and failure checks also passed.
+- All five built layouts were visually inspected with synthetic fixtures. A narrow Linear transport defect and collection load-action clipping were corrected and retained in the browser geometry gate. Short windows may scroll vertically rather than compress or conceal deck controls.
+- This is a presentation change. Native engine/bridge/session code is unchanged; native signal capture and real-output integration were not rerun for this pass. Browser fixture interactions are not native audio or target-machine installation/physical-output acceptance.
+
+## Earlier UI foundation checks
 
 - **12 Node tests passed.** They cover all ordered layout transitions against a four-deck fixture, immutability, saved preference/session restoration, paused startup, bounded/rejected inputs, cue editing, targeted track loading, malformed snapshots, storage refusal, single persistence ownership, shared renderer output, escaped search text and complete approved-stylesheet integrity.
 - **Build and bundled-script syntax passed.** `npm run build` produced the portable app and `node --check dist/bundle-check.mjs` accepted its actual emitted script.

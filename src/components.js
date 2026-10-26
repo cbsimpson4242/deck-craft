@@ -13,11 +13,8 @@ export function sleeve(track,cls='') {
   const id='cover-'+(++assetSequence),i=TRACKS.indexOf(track)+1;
   return `<svg class="art ${cls}" viewBox="0 0 100 100" aria-label="${track.local?'Generated placeholder artwork for':'Synthetic sleeve for'} ${escapeHTML(track.title)}"><defs><linearGradient id="${id}" x2="1" y2="1"><stop stop-color="${track.color}"/><stop offset="1" stop-color="#18232a"/></linearGradient></defs><rect width="100" height="100" fill="url(#${id})"/><path d="M-10 70 70-10M10 110 110 10" stroke="#ffffff24" stroke-width="25"/><circle cx="50" cy="50" r="28" fill="none" stroke="#eceddf" stroke-width=".7"/><circle cx="50" cy="50" r="19" fill="none" stroke="#eceddf" stroke-width=".7"/><path d="M15 80h70M50 15v70" stroke="#eceddf80" stroke-width=".6"/><text x="9" y="15" fill="#f0f0e8" font-family="monospace" font-size="7">DC / ${String(i).padStart(3,'0')}</text></svg>`;
 }
-export const deckColor = (id,state) => {
-  if(state.layout==='studio-linear') return {A:'#97bde9',B:'#bdcbd8',C:'#94c8b3',D:'#d6b68e'}[id];
-  if(['studio-grid'].includes(state.layout)) return ['A','C'].includes(id)?'#9bbfe9':'#d5b99a';
-  return ['A','C'].includes(id)?'#b5d98a':'#8dbce3';
-};
+// Visual identity belongs to the deck, not the selected layout.
+export const deckColor = id => ({A:'#d2fa69',B:'#64d8fa',C:'#ffbc70',D:'#c6a0ff'}[id]);
 const waveCache=new Map();
 function wavePaths(seed) {
   if(waveCache.has(seed)) return waveCache.get(seed);

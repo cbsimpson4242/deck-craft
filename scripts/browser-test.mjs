@@ -105,20 +105,24 @@ try {
  assert.match(await evaluate("document.querySelector('section[data-deck=\"C\"] .remaining').textContent"),/03:17/);
  report.checks.push('layout preference and position survive a complete Chromium process restart');
  await input('.search','');
- for(const width of [1440,1280,390,360]){
-  await client.call('Emulation.setDeviceMetricsOverride',{width,height:width>1000?1000:844,deviceScaleFactor:1,mobile:false});
+ for(const [width,height] of [[1920,1080],[1440,900],[1366,768],[1280,720],[390,844],[360,844]]){
+  await client.call('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});
   for(const layout of LAYOUTS){
    await select('.layout-picker',layout.id);
    if(layout.id==='studio-linear')await click('[data-action="cue-disclosure"]');
-   const geometry=await evaluate(`(()=>{const s=document.querySelector('.layout-picker').getBoundingClientRect(),h=document.querySelector('.appbar').getBoundingClientRect();const clipped=[...document.querySelectorAll('section.deck .bpm-value,section.deck .pad')].some(el=>{if(!el.getClientRects().length)return false;const r=el.getBoundingClientRect(),d=el.closest('section.deck').getBoundingClientRect();return r.right>d.right+1||r.bottom>d.bottom+1||r.left<d.left-1});return {overflow:document.documentElement.scrollWidth>innerWidth,pickerVisible:s.width>100&&s.left>=h.left&&s.right<=h.right,deckCount:document.querySelectorAll('section.deck').length,clippedControls:clipped}})()`);
+   const geometry=await evaluate(`(()=>{const s=document.querySelector('.layout-picker').getBoundingClientRect(),h=document.querySelector('.appbar').getBoundingClientRect();const clipped=[...document.querySelectorAll('section.deck .bpm-value,section.deck .pad,section.deck .transport button,section.deck .elapsed,section.deck .remaining')].some(el=>{if(!el.getClientRects().length)return false;const r=el.getBoundingClientRect(),d=el.closest('section.deck').getBoundingClientRect();return r.right>d.right+1||r.bottom>d.bottom+1||r.left<d.left-1});const collection=document.querySelector('.table-wrap');return {overflow:document.documentElement.scrollWidth>innerWidth,pickerVisible:s.width>100&&s.left>=h.left&&s.right<=h.right,deckCount:document.querySelectorAll('section.deck').length,clippedControls:clipped,collectionOverflow:collection.scrollWidth>collection.clientWidth+1,accent:getComputedStyle(document.body).getPropertyValue('--a').trim()}})()`);
    assert.equal(geometry.clippedControls,false,layout.id+' clipped readout/cue bank at '+width);
    assert.equal(geometry.overflow,false,layout.id+' overflow at '+width);assert.equal(geometry.pickerVisible,true);assert.equal(geometry.deckCount,layout.decks);
+   assert.equal(geometry.collectionOverflow,false,layout.id+' collection hides load actions at '+width);
+   assert.equal(geometry.accent,'#d2fa69',layout.id+' lost the selected Performance treatment');
+   const loads=await evaluate(`(()=>{const panel=document.querySelector('.table-wrap').getBoundingClientRect();return [...document.querySelectorAll('tr[data-track-id]:not([hidden]) .load')].map(el=>{const r=el.getBoundingClientRect();return r.width>=25&&r.left>=panel.left&&r.right<=panel.right+1})})()`);
+   assert.ok(loads.length>0&&loads.every(Boolean),layout.id+' clipped collection loading buttons at '+width);
    await click('.app-mixer');assert.equal(await evaluate("document.querySelector('.mixer-dialog').open"),true);assert.equal(await evaluate("getComputedStyle(document.querySelector('.mixer-dialog .channel-strips')).display"),'flex');await click('[data-action="close-mixer"]');
-   report.responsiveCases.push({width,layout:layout.id,...geometry});
+   report.responsiveCases.push({width,height,layout:layout.id,...geometry});
    if(evidence&&(width===1440||width===390)){const image=await client.call('Page.captureScreenshot',{format:'png'});await writeFile(path.join(evidence,layout.id+'-'+width+'.png'),Buffer.from(image.data,'base64'));}
   }
  }
- report.checks.push('20 responsive layout cases and four-channel mixer dialog at every viewport');
+ report.checks.push('30 responsive layout cases: Performance palette, contained transport/clocks/cues, collection load actions and four-channel mixer dialog');
  await select('.layout-picker','studio-grid');
  await input('.search','<img src=x onerror=alert(1)>');await select('.layout-picker','studio-sync');assert.equal(await evaluate("document.querySelector('.empty').hidden"),false);assert.equal(await evaluate("document.querySelectorAll('img').length"),0);
  await click('[data-action="clear-search"]');

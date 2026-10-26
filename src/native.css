@@ -3,9 +3,9 @@
   align-items: center;
   gap: 10px;
   padding: 7px 14px;
-  background: #151b1f;
-  border-bottom: 1px solid #ffffff12;
-  color: #a9b9c2;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
   font:
     10px/1.5 ui-monospace,
     monospace;
@@ -25,9 +25,10 @@
   font: inherit;
 }
 .native-audio-bar .native-import {
-  border-color: #55796b;
-  background: #23372f;
-  color: #bfdfcd;
+  border-color: var(--a);
+  background: var(--a);
+  color: #13190a;
+  font-weight: 650;
 }
 .native-desktop button:disabled,
 .native-desktop input:disabled {
@@ -51,7 +52,7 @@
   font-size: 9px;
 }
 .native-desktop .engine-label {
-  color: #9bc3ab;
+  color: var(--a);
 }
 .native-desktop .native-audio-bar [hidden] {
   display: none;
