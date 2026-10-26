@@ -25,6 +25,8 @@ async function run() {
   const phase = process.env.DECKCRAFT_TEST_PHASE || "first";
   const realDialog = process.env.DECKCRAFT_TEST_NATIVE_DIALOG === "1";
   const filename = path.join(dir, "Generated local <audio> fixture.wav");
+  const musicFolder = path.join(dir, "generated-music");
+  const secondFile = path.join(musicFolder, "Second generated fixture.wav");
   if (phase === "first") {
     const rate = 48000,
       frames = rate * 30,
@@ -47,6 +49,9 @@ async function run() {
       b.writeInt16LE(v, 46 + i * 4);
     }
     await fs.writeFile(filename, b);
+    await fs.mkdir(musicFolder, { recursive: true });
+    await fs.writeFile(secondFile, b);
+    await fs.writeFile(path.join(musicFolder, "Broken fixture.wav"), "not audio");
   }
   const errors = [];
   app.on("web-contents-created", (_event, contents) =>
@@ -58,9 +63,19 @@ async function run() {
     }),
   );
   const desktop = await startDesktop({
-    userData: path.join(dir, "user-data"),
+    userData: path.join(dir, phase === "offline" ? "offline-user-data" : "user-data"),
     enginePath: process.env.DECKCRAFT_TEST_ENGINE || path.resolve(__dirname, "../native/target/debug/deck-craft-audio"),
-    chooseFile: async (owner) => {
+    chooseFile: async (owner, options) => {
+      if (options) {
+        if (options.properties.includes("openDirectory")) {
+          assert.equal(Object.hasOwn(options, "filters"), false, "Folder picker must not filter out navigable directories");
+        } else {
+          assert.deepEqual(options.properties, ["openFile", "multiSelections"]);
+          assert.ok(options.filters[0].extensions.includes("mp3"), "File picker must retain its audio filter");
+        }
+      }
+      if (options && !realDialog) return { canceled: false, filePaths: options.properties.includes("openDirectory") ? [musicFolder] : [filename, secondFile] };
+      if (options) return require("electron").dialog.showOpenDialog(owner, options);
       if (!realDialog) return { canceled: false, filePaths: [filename] };
       const result = await require("electron").dialog.showOpenDialog(owner, {
         title: "Load audio into deck A",
@@ -80,6 +95,39 @@ async function run() {
     });
   const command = (object) => js(`window.deckCraftNative.command(${JSON.stringify(object)})`);
   const session = () => js("JSON.parse(localStorage.getItem('deck-craft.ui.v1'))");
+  if (phase === "offline") {
+    await until(() => js("Boolean(document.querySelector('[data-action=library-import]'))"), "offline library UI");
+    assert.equal((await command({ type: "status" })).snapshot.ready, false);
+    await js("document.querySelector('[data-action=library-import][data-kind=files]').click()");
+    await until(async () => (await command({ type: "library" })).tracks.length === 2, "real decoder import with no output device");
+    await until(() => js("!document.querySelector('[data-action=library-import]').disabled"), "offline import settled");
+    const snapshot = (await command({ type: "status" })).snapshot;
+    assert.equal(snapshot.ready, false);
+    assert.ok(snapshot.decks.every(d => !d.trackId && !d.playing));
+    assert.equal(await js("document.querySelector('.native-import').disabled"), true);
+    assert.equal(await js("document.querySelector('[data-action=library-import]').disabled"), false);
+    const retainedId = (await command({ type: "library" })).tracks[0].id;
+    await js(`{const s=JSON.parse(localStorage.getItem('deck-craft.ui.v1'));s.decks.A.trackId=${JSON.stringify(retainedId)};s.decks.A.position=0;s.decks.A.playing=false;localStorage.setItem('deck-craft.ui.v1',JSON.stringify(s));}`);
+    window.webContents.reload();
+    await until(() => js("Boolean(document.querySelector('[data-action=library-forget]'))"), "restored offline deck selection");
+    assert.equal((await session()).decks.A.trackId, retainedId);
+    assert.ok((await command({ type: "status" })).snapshot.decks.every(d => !d.trackId));
+    assert.equal((await command({ type: "forget", trackIds: [retainedId] })).error, "track_in_use");
+    await js(`document.querySelector('[data-action="library-select"][data-track="${retainedId}"]').click();document.querySelector('[data-action="library-forget"]').click();document.querySelector('[data-action="library-save"]').click();`);
+    await until(() => js("document.querySelector('.library-feedback').textContent.includes('assigned to a deck')"), "offline UI removal refused before mutation");
+    assert.equal((await command({ type: "library" })).tracks.length, 2);
+    const offlineEngine = (await command({ type: "status" })).snapshot.engineId;
+    await js("document.querySelector('[data-action=reconnect-audio]').click()");
+    await until(async () => (await command({ type: "status" })).snapshot.engineId !== offlineEngine, "offline engine reconnect");
+    assert.equal((await command({ type: "forget", trackIds: [retainedId] })).error, "track_in_use");
+    assert.equal((await command({ type: "retain-track", deck: "A", trackId: "local-00000000-0000-0000-0000-000000000000" })).ok, false);
+    assert.equal((await command({ type: "forget", trackIds: [retainedId] })).error, "track_in_use");
+    assert.deepEqual(errors, []);
+    const report = { phase, checks: ["Files import through the actual decoder with no audio output device", "Offline deck controls remain disabled while library organization stays available", "Renderer-selected tracks remain protected from UI and direct IPC removal after offline restart and engine reconnect"], physicalDeviceTested: false };
+    await fs.writeFile(path.join(dir, "desktop-offline.json"), JSON.stringify(report, null, 2));
+    app.quit();
+    return;
+  }
   const ready = () => js("!!document.querySelector('.native-import')&&!document.querySelector('.native-import').disabled");
   await until(ready, "native bridge + native audio ready");
   const checks = [];
@@ -202,9 +250,13 @@ async function run() {
     assert.ok(Math.abs(s.decks.A.cues[1] - 12.3) < 0.02);
     assert.ok(!s.decks.A.playing && !s.decks.B.playing);
     checks.push("Second deck loads independently and final musical state is saved paused");
+    const libraryExpected = realDialog ? {} : await require("./library-desktop.cjs")({ js, command, until, checks, idA, phase });
+    await js("{const p=document.querySelector('.layout-picker');p.value='studio-linear';p.dispatchEvent(new Event('change',{bubbles:true}));}");
+    await delay(250);
+    s = await session();
     await fs.writeFile(
       path.join(dir, "expected.json"),
-      JSON.stringify({ trackId: idA, position: s.decks.A.position, cues: s.decks.A.cues, engineId: start.engineId }),
+      JSON.stringify({ trackId: idA, position: s.decks.A.position, cues: s.decks.A.cues, engineId: start.engineId, ...libraryExpected }),
     );
     const image = await window.webContents.capturePage();
     await fs.writeFile(path.join(dir, "desktop.png"), image.toPNG());
@@ -222,6 +274,7 @@ async function run() {
     assert.ok(native.decks.every((d) => !d.playing));
     assert.equal(s.decks.B.trackId, expected.trackId);
     checks.push("Complete app restart restores layout, local tracks, positions and cues, but never starts playback");
+    if (expected.collections) await require("./library-desktop.cjs")({ js, command, until, checks, phase, expected });
   }
   const bounds = await js(
     '({width:innerWidth,scroll:document.documentElement.scrollWidth,choices:document.querySelector(".layout-picker").options.length,errors:[]})',

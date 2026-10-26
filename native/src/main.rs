@@ -3,7 +3,7 @@ use deck_craft_audio::{
     stream::{Prepared, StreamState, prepare},
     validate,
 };
-use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player};
+use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use serde_json::{Value, json};
 use std::{
     io::{self, Write},
@@ -345,6 +345,28 @@ fn valid_id(id: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b"-_".contains(&b))
 }
 fn main() {
+    // Import metadata without opening an output device or touching any deck.
+    // The privileged desktop supplies the same identity-bound load envelope.
+    if std::env::args().nth(1).as_deref() == Some("--inspect") {
+        let result = std::panic::catch_unwind(|| -> Result<Value, &'static str> {
+            let frame = read_frame(&mut io::stdin().lock())
+                .map_err(|_| "invalid_request")?.ok_or("invalid_request")?;
+            let request: Request = serde_json::from_slice(&frame).map_err(|_| "invalid_request")?;
+            validate(&request.command)?;
+            if let Command::Load { path, identity, .. } = request.command {
+                let mut decoder = decode(checked_file(&path, &identity)?)?;
+                let metadata = json!({"duration":decoder.total_duration().unwrap().as_secs_f64(),"channels":decoder.channels().get(),"sampleRate":decoder.sample_rate().get()});
+                if decoder.next().is_none() { return Err("unsupported_or_corrupt_audio"); }
+                Ok(metadata)
+            } else { Err("invalid_command") }
+        }).unwrap_or(Err("decoder_failed"));
+        let reply = match result {
+            Ok(metadata) => json!({"ok":true,"metadata":metadata}),
+            Err(error) => json!({"ok":false,"error":error}),
+        };
+        println!("{}", reply);
+        return;
+    }
     let failed = Arc::new(AtomicBool::new(false));
     let error_flag = failed.clone();
     let output = DeviceSinkBuilder::from_default_device()

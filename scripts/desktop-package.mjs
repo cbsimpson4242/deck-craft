@@ -33,6 +33,7 @@ for (const file of [
   "desktop/preload.cjs",
   "desktop/audio-client.cjs",
   "desktop/library.cjs",
+  "desktop/importer.cjs",
   "desktop/policy.cjs",
   "assets/deck-craft.svg",
 ]) {
