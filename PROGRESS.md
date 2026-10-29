@@ -6,6 +6,8 @@ Approved from the offline proof in `sketches/008-component-themes/` (five themes
 
 Verified on the controller host: 83 Node tests (eight new theme regressions), build and bundle syntax, the browser suite (25 layout transitions, 30 responsive cases and 50 theme × layout × width cases), the canvas suite, the Rust and installer suites, all isolated native signal checks and the real Electron/native first, restore and offline phases through a private null sink. One folder-import step timed out once in the Electron lane and passed on two reruns; it is recorded as a transient. No physical output, Omarchy portal or hardware latency was tested here. Deployment to the target is a separate step.
 
+Deployment: the committed themes source (3dd7906) was packaged as release 0.3.1-6440b223f520 and installed user-locally on the Omarchy target through the normal installer after a private-state backup. All installed payload files match the package manifest; the previous release is retained for rollback and the library file is unchanged. The running app was left open, so it still shows the old release until restarted. Launch of the new release, physical output, portal behavior and latency on the target remain unverified.
+
 ## Approved offline theme proof (history)
 
 `sketches/008-component-themes/` is an offline, synthetic proof of the five themes from one ten-token set, with every component in every theme and a mixed-theme canvas. The appearance was approved and implemented as described above; the proof file is kept unchanged.
