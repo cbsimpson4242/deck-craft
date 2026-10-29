@@ -8,6 +8,8 @@ Implemented: compact deck header, scrolling detail waveform with a fixed playhea
 
 Verified on the controller host: 75 Node tests (seven new deck-face regressions), six Rust tests, five installer tests, build and bundle syntax, 25 layout transitions and 30 responsive cases, the canvas suite, all 18 isolated native signal checks and the real Electron/native first-use, paused-restart and offline phases through a private null sink with a fixed ALSA PulseAudio plugin. No physical output, Omarchy portal or hardware latency was tested, and nothing has been installed or pushed. The previously installed target build is unchanged.
 
+Deployment: the committed deck-face source (07a787f) was packaged as release 0.3.1-85a467bb109d and installed user-locally on the Omarchy target through the normal installer. All 186 installed payload files match the package manifest; the desktop bridge and native engine were already byte-identical to the previously installed release, so only the bundled UI changed. The previous release is retained for rollback and a private-state backup was taken first. The app was open and in use, so it was not closed: restart it to load the new release. Launch of the new release, physical output, portal behavior and latency on the target remain unverified.
+
 ## Approved visual proof: reference-matched deck and transport
 
 **Appearance approved:** the user reviewed version 3 (`sketches/007-reference-deck/index.html`) and accepted its look. That approves the visual direction only. Applying it to the five layouts, the custom canvas and live waveform data has not started and still needs a go-ahead; the preview remains synthetic and the running app unchanged.
