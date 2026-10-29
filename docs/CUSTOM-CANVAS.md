@@ -27,6 +27,8 @@ The canvas is a scrollable desktop surface, not an automatic responsive reflow s
 - Save failures remain visible independently for musical and workspace persistence. Invalid saved workspace data does not clear unrelated storage or change the musical session; its original bytes are left untouched until an explicit workspace change is saved.
 - Session restoration remains paused. Canvas state contains no track IDs, file paths, imported metadata, waveforms or native generations.
 
+Deck components use the shared reference deck face and a 560-pixel default height; the waveform, cue bank and cue-edit strip toggles still apply. Unavailable controls inside a deck stay disabled and no design field can bind them to a command.
+
 Limits: 24 placed components, 24 saved component templates, eight saved workspace presets, 256 KiB per imported design and 1 MiB serialized workspace state. Item coordinates are bounded to x 0..2400 / y 0..4800; width 320..1600 and height 160..1600. Unknown fields, invalid versions, duplicate item IDs, unsafe style values and out-of-range dimensions are rejected before mutation.
 
 Effects and unsupported EQ, sync, pitch, loops and headphone controls stay disabled in the canvas, including browser-only builds. The browser-only artifact has no audio. Imported PCM displays and native playback keep their existing limitations; styling does not implement new DSP.

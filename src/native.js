@@ -1,5 +1,5 @@
 import { DECK_IDS, trackById, registerLocalTrack, replaceLocalLibrary } from "./catalog.js";
-import { icon, timeLabel } from "./components.js";
+import { icon, timeLabel, paintWaveBox } from "./components.js";
 
 const nativeErrors = {
   audio_output_unavailable: "The default audio output is unavailable. Check PipeWire and your output device, then reconnect audio.",
@@ -287,9 +287,9 @@ export class NativeSession {
       for (const el of document.querySelectorAll(`section.deck[data-deck="${id}"] .remaining`))
         el.textContent = "−" + timeLabel(track.duration - d.position, true);
       for (const box of document.querySelectorAll(`[data-wave-deck="${id}"]`)) {
-        box.querySelector(".position-marker").style.left = (d.position / track.duration) * 100 + "%";
+        paintWaveBox(box, d.position / track.duration);
         const seek = box.querySelector("input");
-        if (document.activeElement !== seek) seek.value = d.position;
+        if (seek && document.activeElement !== seek) seek.value = d.position;
       }
       for (const input of document.querySelectorAll(`[data-deck="${id}"][data-field="level"]`))
         if (document.activeElement !== input) input.value = d.level;
@@ -328,7 +328,7 @@ export class NativeSession {
     if (version) version.textContent = "0.3.1";
     for (const el of document.querySelectorAll(".mobile-engine-notice")) el.textContent = "NATIVE FILE PLAYBACK · ADVANCED DSP PENDING";
     for (const el of document.querySelectorAll(
-      '[data-field="sync"],[data-field="headphone"],[data-field="loopEnabled"],[data-field="pitch"],[data-action="loop-size"],[data-action="toggle-fx"],[data-action="fx-wet"],[data-field="gain"],[data-field="hi"],[data-field="mid"],[data-field="low"],[data-field="filter"]',
+      '[data-field="sync"],[data-field="headphone"],[data-field="loopEnabled"],[data-field="pitch"],[data-action="loop-size"],[data-action="loop-length"],[data-action="toggle-fx"],[data-action="fx-wet"],[data-field="gain"],[data-field="hi"],[data-field="mid"],[data-field="low"],[data-field="filter"]',
     )) {
       el.disabled = true;
       el.title = "Not implemented in this first audio milestone";

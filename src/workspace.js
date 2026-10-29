@@ -63,7 +63,7 @@ export function restoreWorkspace(text) {
  const value=JSON.parse(text);validateDesignSchema(value,wsStorageSchema);validateWorkspace(value.snapshot);value.presets.forEach(validateWorkspace);
  return structuredClone(value);
 }
-const wsSizes={deck:[560,400],mixer:[540,600],browser:[780,520],waveform:[560,180],cues:[420,180],crossfader:[420,160],effects:[660,180]};
+const wsSizes={deck:[560,560],mixer:[540,600],browser:[780,520],waveform:[560,180],cues:[420,180],crossfader:[420,160],effects:[660,180]};
 function appendDesign(snapshot,design) {
  const index=snapshot.items.length;let next=1;
  while(snapshot.items.some(item=>item.id==='item-'+next))next++;
@@ -75,9 +75,9 @@ export function workspaceStarter(layoutId) {
  const snapshot=createWorkspace().snapshot;snapshot.name=LAYOUTS.find(layout=>layout.id===layoutId).name+' canvas';
  const two=layoutId.startsWith('signal'),linear=layoutId==='studio-linear';
  const ids=two?['A','B']:DECK_IDS;
- ids.forEach((id,i)=>{appendDesign(snapshot,createComponent('deck',id));const item=snapshot.items.at(-1);item.x=linear?0:i%2*580;item.y=linear?i*420:Math.floor(i/2)*420;item.width=560;});
+ ids.forEach((id,i)=>{appendDesign(snapshot,createComponent('deck',id));const item=snapshot.items.at(-1);item.x=linear?0:i%2*580;item.y=linear?i*580:Math.floor(i/2)*580;item.width=560;});
  appendDesign(snapshot,createComponent('mixer'));Object.assign(snapshot.items.at(-1),{x:1160,y:0,width:520,height:680});
- appendDesign(snapshot,createComponent('browser'));Object.assign(snapshot.items.at(-1),{x:linear?580:0,y:linear?720:two?440:860,width:1120,height:480});
+ appendDesign(snapshot,createComponent('browser'));Object.assign(snapshot.items.at(-1),{x:linear?580:0,y:linear?720:two?600:1180,width:1120,height:480});
  if(layoutId==='studio-sync'){appendDesign(snapshot,createComponent('waveform'));Object.assign(snapshot.items.at(-1),{x:1160,y:700,width:520,height:180});}
  return validateWorkspace(snapshot);
 }

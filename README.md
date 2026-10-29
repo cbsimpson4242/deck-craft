@@ -4,7 +4,7 @@
 
 An open-source DJ application built around professional workflows, reliable performance, and community ownership.
 
-**Current milestone: a customizable component canvas over the Linux native desktop preview.** Assemble and style existing decks, mixer, browser and smaller parts; save reusable components/workspaces and export a self-contained AI-agent creator kit. Browse local files/folders, build crates and ordered playlists, and play/pause/seek through the separate Rust audio engine. All five approved layouts remain available over the same four-deck session.
+**Current milestone: the approved reference-style deck face across every layout, over the customizable component canvas and Linux native desktop preview.** Assemble and style existing decks, mixer, browser and smaller parts; save reusable components/workspaces and export a self-contained AI-agent creator kit. Browse local files/folders, build crates and ordered playlists, and play/pause/seek through the separate Rust audio engine. All five approved layouts remain available over the same four-deck session.
 
 **Omarchy is the first target:** user-local installation and native Wayland window launch have been verified on the target desktop, with the native engine reporting audio ready. Full file-chooser/portal interaction, physical audible output and hardware latency still need acceptance there. This is not yet a Serato/Traktor replacement. EQ, FX, loops, sync, beat/key detection, time stretching, signal meters, headphone routing and controller integration are **not implemented**; those controls are disabled in the desktop app.
 
@@ -88,6 +88,12 @@ A layout switch never reloads audio or creates another engine. C/D remain presen
 Choose **Customize** or **Layout → Custom canvas** for an initially empty canvas. Click/drag components from the drawer, move their title bars, resize their corners and use the inspector to change colors, corners, density, scale and deck bindings. Save reusable styled components and workspace presets. **Perform** locks layout editing; **Edit** unlocks it. The original Studio Sync default and all five original views are preserved, with editable starter arrangements also available in the builder.
 
 **AI creator kit** exports a design starter, exact versioned schemas, examples, capability reference and standalone validator for any external agent. Paste/open the generated JSON, validate and preview it, then explicitly apply it. This first stage styles existing controls only: no executable plugins or new audio behavior. Effects remain disabled placeholders. Removing a component removes its view, never its playing source. See [custom canvas and agent workflow](docs/CUSTOM-CANVAS.md).
+
+### The deck face
+
+Every deck in all five layouts and the custom canvas uses one compact face: track information and clocks, a scrolling detail waveform with a fixed playhead and cue flags, a full-track overview with played-region shading, a vertical tempo slider, the transport/loop row, an eight-position cue bank and a cue-editing strip. Slots 5–8 are reserved and disabled because the app stores four manual cues. Real controls: Play, Cue, four manual cues, seek, loop-length preset values and the existing UI flags. **CUP, FLX, REV, SYNC/master behavior, loop IN/OUT/looping, tempo processing, cue-type editing and controller mapping are visibly disabled or UI-state only.**
+
+Imported files draw their decoded PCM peaks. Their red/magenta/violet coloring follows **amplitude only** and is a design palette, not low/mid/high-frequency analysis. Synthetic demo decks use a labeled deterministic fixture. A local file without peaks draws no waveform.
 
 Imported waveforms are decoded PCM amplitude overviews, not beat grids or frequency analysis. BPM/key show an em dash for local tracks until real analysis exists. Artwork is a generated placeholder, not extracted album art.
 

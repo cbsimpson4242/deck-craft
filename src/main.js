@@ -2,7 +2,7 @@ import { DECK_IDS, LAYOUTS, trackById } from './catalog.js';
 import { NativeSession, restoreNativeCatalog } from './native.js';
 import { createStore } from './store.js';
 import { createViewOptions, renderSession } from './views.js';
-import { icon, timeLabel } from './components.js';
+import { icon, timeLabel, paintWaveBox } from './components.js';
 import { LibraryController, orderedLibraryTracks } from './library.js';
 import { CanvasEditor } from './canvas-editor.js';
 
@@ -41,7 +41,7 @@ function update() {
     $$(`[data-action="toggle-deck"][data-deck="${id}"]`).forEach(button=>{
       const on=d[button.dataset.field];button.setAttribute('aria-pressed',String(on));
       if(button.classList.contains('play')||button.closest('.hidden-deck')) {button.innerHTML=icon(on?'pause':'play');button.setAttribute('aria-label',(on?'Pause':'Play')+' deck '+id+' UI transport; no audio');}
-      if(button.classList.contains('loop')) $('span',button).textContent=d.loopLength;
+      if(button.classList.contains('loop')) {const length=$('.loop-len',button);if(length)length.textContent=d.loopLength;}
     });
     $$(`[data-action="deck-number"][data-deck="${id}"]`).forEach(input=>{
       const value=d[input.dataset.field];if(Number(input.value)!==value&&(!nativeAudio||document.activeElement!==input))input.value=value;
@@ -50,11 +50,13 @@ function update() {
       if(label?.classList.contains('pitch')) $('output',label).textContent=(value>=0?'+':'')+value.toFixed(1)+'%';
     });
     $$(`[data-action="hot-cue"][data-deck="${id}"]`).forEach(button=>{
-      const cue=d.cues[Number(button.dataset.index)];$('small',button).textContent=timeLabel(cue);button.setAttribute('aria-pressed',String(Math.abs(cue-d.position)<.05));
+      const index=Number(button.dataset.index),cue=d.cues[index];$('small',button).textContent=timeLabel(cue);button.setAttribute('aria-pressed',String(Math.abs(cue-d.position)<.05));button.classList.toggle('filled',index===0||cue>0);
     });
+    $$(`[data-action="loop-length"][data-deck="${id}"]`).forEach(button=>button.setAttribute('aria-pressed',String(Number(button.dataset.value)===d.loopLength)));
+    $$(`[data-pitch-readout="${id}"]`).forEach(el=>el.textContent=(d.pitch>=0?'+':'')+d.pitch.toFixed(1)+'%');
     $$(`[data-wave-deck="${id}"]`).forEach(box=>{
-      $('.position-marker',box).style.left=d.position/track.duration*100+'%';
-      $$('[data-cue-flag]',box).forEach(flag=>flag.style.left=d.cues[Number(flag.dataset.cueFlag)]/track.duration*100+'%');
+      paintWaveBox(box,d.position/track.duration);
+      $$('[data-cue-flag]',box).forEach(flag=>{const index=Number(flag.dataset.cueFlag),cue=d.cues[index];flag.style.left=cue/track.duration*100+'%';flag.hidden=!(index===0||cue>0);});
     });
     const hidden=$(`[data-hidden-deck="${id}"]`);
     if(hidden){$('.hidden-track',hidden).textContent=track.title;$('.hidden-state',hidden).textContent=d.playing?'UI transport on':'Paused';hidden.classList.toggle('active',d.playing||d.headphone||d.loopEnabled);}
@@ -111,6 +113,7 @@ root.addEventListener('click',event=>{
     case 'mode':dispatch({type:'mode',value:target.dataset.value});break;
     case 'toggle-deck':dispatch({type:'deck',deck:id,field,value:!state.decks[id][field]});if(field==='playing'&&!nativeAudio)toast('Transport UI state only — no audio engine is connected.');break;
     case 'cue':dispatch({type:'cue',deck:id});break;
+    case 'loop-length':dispatch({type:'deck',deck:id,field:'loopLength',value:Number(target.dataset.value)});break;
     case 'loop-size':dispatch({type:'deck',deck:id,field:'loopLength',value:Math.max(1,Math.min(32,state.decks[id].loopLength*Number(target.dataset.factor)))});break;
     case 'hot-cue':dispatch({type:event.shiftKey?'setCue':'hotCue',deck:id,index:Number(target.dataset.index)});if(event.shiftKey)toast('Cue stored at the current UI position.');break;
     case 'set-cue':dispatch({type:'setCue',deck:id,index:Number(target.dataset.index)});toast('Cue stored for deck '+id+'.');break;

@@ -1,5 +1,25 @@
 # Progress
 
+## Current: approved reference deck face applied to every layout
+
+The approved version-3 appearance is now the real deck component in Studio Sync, Studio Grid, Studio Linear, Signal One, Signal Wide and the custom canvas. It changes presentation only: the shared four-deck session, native bridge, persistence and layout switching are unchanged, and C/D remain preserved in two-deck views.
+
+Implemented: compact deck header, scrolling detail waveform with a fixed playhead, cue flags, overview with played shading and start button, vertical tempo slider, transport with lime Play, Cue, disabled CUP/FLX/REV, loop-length presets (existing validated `loopLength`), disabled IN/OUT, an eight-position cue bank (slots 5–8 reserved and inert) and a disabled cue-editing strip. Local files render decoded PCM peaks with amplitude-only palette coloring; demo tracks use a labeled deterministic fixture; local tracks without peaks draw nothing. The canvas deck default height grows to 560 so the whole face fits; starter spacing follows.
+
+Verified on the controller host: 75 Node tests (seven new deck-face regressions), six Rust tests, five installer tests, build and bundle syntax, 25 layout transitions and 30 responsive cases, the canvas suite, all 18 isolated native signal checks and the real Electron/native first-use, paused-restart and offline phases through a private null sink with a fixed ALSA PulseAudio plugin. No physical output, Omarchy portal or hardware latency was tested, and nothing has been installed or pushed. The previously installed target build is unchanged.
+
+## Approved visual proof: reference-matched deck and transport
+
+**Appearance approved:** the user reviewed version 3 (`sketches/007-reference-deck/index.html`) and accepted its look. That approves the visual direction only. Applying it to the five layouts, the custom canvas and live waveform data has not started and still needs a go-ahead; the preview remains synthetic and the running app unchanged.
+
+The third visual pass (`index.html`) darkens and saturates the waveform palette toward the supplied reference's red/magenta/violet scheme and refines surfaces, with `index-v1.html` and `index-v2.html` preserved. The synthetic palette is not analysis. The second visual pass retains the composition and adds heavier typography, high-density continuous vector waveform contours, consistent vector icons and more legible control edges. `index-v1.html` preserves the first reviewed proof; `index.html` is the refined candidate. These are still synthetic visual studies, not an audio-analysis or application update.
+
+The user supplied separate deck and transport references and authorized a visual proof before application changes. `sketches/007-reference-deck/index.html` combines the compact metadata/waveform/overview/pitch composition with the transport, loop controls, eight cue positions and slim cue-editing strip. It retains Deck Craft branding and the existing deck identity colors. The supplied screenshots are included only in a private side-by-side review copy, not in source.
+
+This is an offline, synthetic, no-audio preview, not an implementation or deployment. Preview presets, mock play/pause/seek and manual cue interactions do not touch the shared session, library, engine or persistence. The current application has four manual cues: positions 5–8 are visible but disabled in the proof. Meaningful frequency colors, high-resolution scrolling waveform data and the other unsupported processing/editing/mapping controls remain unimplemented. Appearance approval is still pending; all five application layouts, the customizable canvas and historical designs remain unchanged.
+
+Verification: Chromium exercised real pointer Play/Cue, mock seeking/storage, all preview presets and presentation-state preservation; 16 viewport/width-mode combinations had no document overflow or deck-control clipping, with no browser errors or HTTP requests. Desktop comparison, close-up and narrow screenshots were inspected. The unchanged application also passes 68 Node tests, six Rust tests, five installer tests, build/bundle syntax, both browser regression suites and publication checks. No new native signal or target-machine acceptance is claimed for this visual-only proof.
+
 ## Current: customizable component canvas and external-agent creator kit
 
 The approved first stage adds presentation customization over existing functionality, not new DSP or executable plugins. **Customize** / **Layout → Custom canvas** opens an initially empty workspace. The five original layouts and Studio Sync default remain intact; the builder offers editable starter arrangements based on them.

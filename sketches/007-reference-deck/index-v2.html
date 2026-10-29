@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Deck Craft · Refined deck proof</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#101112;color:#c6c8c9;font:14px Arial,Helvetica,sans-serif}button,select,input{font:inherit}button,select{color:inherit;background:#292929;border:1px solid #363636;border-radius:2px}button{cursor:pointer}button:hover:not(:disabled){background:#3c3c3c}button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid #e3edc9;outline-offset:2px}button:disabled{color:#747474;cursor:not-allowed}button[aria-pressed=true]{border-color:#a6d843}header{padding:24px 28px 18px;border-bottom:1px solid #303234;display:flex;gap:20px;justify-content:space-between;align-items:center}h1{font-size:22px;letter-spacing:-.5px;font-weight:500;margin:0 0 8px}h1 b{color:#d2fa69;font-weight:500}header p{margin:0;color:#969a9c;line-height:1.5}.badge{font:11px monospace;letter-spacing:1px;border:1px solid #535a44;color:#c0d697;padding:9px;white-space:nowrap}main{padding:24px 28px;max-width:1700px;margin:auto}.review-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:22px}.review-controls label{display:flex;gap:8px;align-items:center}.review-controls select,.review-controls button{min-height:36px;padding:6px 10px}.review-controls .hint{margin-left:auto;font-size:12px;color:#9a9d9f}.comparison{display:grid;grid-template-columns:minmax(0,1fr);gap:28px}.has-references .comparison{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.reference-column{display:none}.has-references .reference-column{display:block}.section-label{display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin:0 0 12px;font-size:12px;letter-spacing:1px;text-transform:uppercase}.section-label span{font-size:11px;letter-spacing:0;color:#95999b;text-transform:none}.references{background:#080808}.references img{display:block;width:100%;height:auto}.references img+img{margin-top:4px}.candidate{max-width:850px;margin:0 auto}.has-references .candidate{max-width:none}.deck{background:#1a1a1a;padding:14px 14px 7px;border:1px solid #292929;font-variant-numeric:tabular-nums;--identity:#64d8fa}.deck-header{display:grid;grid-template-columns:62px minmax(0,1fr) 94px 96px 34px;gap:10px;align-items:start;min-height:70px}.artwork{width:62px;height:62px;background:#0c1318;display:grid;place-items:center;position:relative;overflow:hidden}.artwork svg{width:62px;height:62px}.track-copy{padding-top:1px;min-width:0}.track-copy strong{display:block;font-size:19px;font-weight:500;line-height:23px;color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.track-copy span{display:block;line-height:19px;font-size:15px;color:#aaa}.clock{text-align:right;font-size:19px;line-height:23px}.clock small,.tempo small{display:block;font-size:14px;line-height:19px;color:#a5a5a5}.clock .type{font-size:12px;color:#858585}.tempo{text-align:right}.tempo strong{display:inline-block;border:2px solid #9bbd42;border-radius:9px;padding:0 5px;line-height:21px;font-size:19px;font-weight:400;color:#d5d5d5}.deck-letter{color:var(--identity);font-size:36px;line-height:38px;font-weight:400;text-align:right}.wave-region{display:grid;grid-template-columns:minmax(0,1fr) 34px;gap:12px}.sync-strip{height:24px;display:flex;align-items:center;background:#1d1d1d;gap:3px}.sync-strip button{height:20px;font-size:12px;font-weight:600;border:0;border-radius:0;padding:1px 11px;letter-spacing:.3px}.sync-strip .master{background:#263a4b;color:#7d9bb5}.beat-ruler{display:flex;justify-content:space-around;flex:1;color:#606060;font-size:12px}.wave{height:104px;position:relative;overflow:hidden;background:#191919}.wave svg,.overview svg{height:100%;width:100%;display:block}.playhead{position:absolute;top:0;bottom:0;left:50%;width:1px;background:#f6efdd;box-shadow:0 0 2px #fff8;pointer-events:none}.playhead:before{content:'';position:absolute;left:-3px;top:1px;border-left:3px solid transparent;border-right:3px solid transparent;border-top:5px solid #f6efdd}.wave-flag{position:absolute;top:4px;height:100%;width:1px;background:#248bf5;color:#071828}.wave-flag b{display:block;font-size:11px;background:#248bf5;width:15px;height:14px;clip-path:polygon(0 0,75% 0,100% 50%,75% 100%,0 100%);padding-left:2px}.overview-row{display:flex;gap:5px;height:37px;margin-top:4px;align-items:stretch}.overview-row>button{width:21px;padding:0;border:0;background:#222;font-size:16px}.overview{flex:1;min-width:0;position:relative;background:#131313;overflow:hidden}.overview .wave-flag{top:0}.overview .playhead{left:59.8%}.view-window{position:absolute;border:1px solid #bcbcbc55;background:#ffffff08;top:0;bottom:0;pointer-events:none}.seek{position:absolute;inset:0;margin:0;width:100%;height:100%;opacity:0;cursor:crosshair}.overview:focus-within{outline:2px solid #d2fa69;outline-offset:1px}.overview-end{width:50px;display:flex;align-items:center;justify-content:center;color:#679680;font-size:13px;background:#202522}.pitch{position:relative;margin-top:2px;height:157px;opacity:.6;display:grid;place-items:center}.pitch-track{height:139px;width:12px;background:repeating-linear-gradient(to bottom,#4d4d4d 0 1px,transparent 1px 7px);position:relative}.pitch-track:after{content:'';position:absolute;left:5px;top:0;bottom:0;width:3px;background:#050505}.pitch-handle{position:absolute;top:74px;width:32px;height:13px;background:#6b6b6b;border:3px solid #444;box-shadow:0 1px 3px #000}.pitch-handle:after{content:'';display:block;margin-top:3px;border-top:1px solid #aaa}.transport{margin-top:12px;padding-top:9px;border-top:1px solid #2b2b2b;display:flex;gap:4px;align-items:center;height:49px}.transport button{border:0;background:transparent;font-size:15px;padding:0 6px;height:36px;border-radius:0;white-space:nowrap}.transport .play{background:#a8de3c;color:#202c10;width:71px;flex:none;display:grid;place-items:center}.transport .play:hover{background:#b7ed4b}.play svg{height:22px;width:22px;fill:currentColor}.play .pause-icon{display:none}.playing .play .play-icon{display:none}.playing .play .pause-icon{display:block}.loop-size{display:flex;margin-left:auto;border:1px solid #333;height:36px}.loop-size button{width:42px;background:#232323;font-size:14px}.loop-size .arrow{width:18px;padding:0}.loop-size .chosen{background:#303030}.loop-points{display:flex;border:1px solid #333;margin-left:auto;height:36px}.loop-points button{border-right:1px solid #333;width:44px;padding:0;font-size:14px}.loop-points button:last-child{border:0;font-size:24px}.hotcues{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:2px;margin-top:10px;height:22px}.hotcues button{padding:1px 7px;text-align:left;font-size:13px;font-weight:600;border:0;border-radius:0;background:#2c2c2c;color:#929292;position:relative}.hotcues .filled{background:#1689f5;color:#0c2640}.hotcues .filled:hover{background:#45a5ff}.hotcues [aria-pressed=true]:after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:#fff}.hotcues button:disabled{background:#272727;color:#636363}.cue-toolbar{display:flex;align-items:center;gap:4px;height:28px;font-size:12px;color:#a7a7a7}.cue-toolbar button{background:transparent;border:0;font-size:14px;padding:0 5px;height:24px;min-width:25px}.cue-toolbar .cue-readout{margin-left:5px;white-space:nowrap}.cue-toolbar select{background:transparent;border:0;max-width:90px;color:#747474;margin-left:auto;font-size:12px}.cue-toolbar .map{font-size:11px;font-weight:600}.deck-note{font-size:12px;line-height:1.65;color:#929799;margin:12px 0 0}.deck-note strong{color:#bcc5c0;font-weight:400}.status{min-height:20px;color:#c3d1b6;margin-top:7px;font-size:12px}.empty .wave svg,.empty .overview svg,.empty .wave-flag,.empty .playhead,.empty .view-window{visibility:hidden}.empty .artwork{opacity:.3}.notes{border-top:1px solid #353638;margin-top:26px;padding-top:17px;font-size:13px;line-height:1.65;color:#a5abad}.notes summary{cursor:pointer;font-size:14px;color:#d1d5d6}.notes ul{padding-left:19px;margin:10px 0}.notes strong{font-weight:500;color:#e0e3e4}.size-compact .candidate{max-width:540px}.solo .reference-column{display:none}.solo .comparison{grid-template-columns:minmax(0,1fr)}.solo .candidate{max-width:850px}.solo.size-compact .candidate{max-width:540px}.muted{color:#818587}.width-note{margin:0 0 12px;font-size:12px;color:#9aa19f}
+/* Refinement pass: stronger type, vector detail, quiet surfaces. */
+body{font-weight:500}
+h1,h1 b{font-weight:600}
+header p,.review-controls,.deck-note,.notes{font-weight:500}
+.section-label{font-weight:700;letter-spacing:1.15px}
+.section-label span{font-weight:500}
+.deck{background:#1b1c1d;border-color:#343638;padding:14px 14px 8px;box-shadow:inset 0 1px #ffffff04}
+.deck-header{min-height:74px;grid-template-columns:62px minmax(0,1fr) 96px 96px 34px;gap:10px}
+.artwork{border:1px solid #34404a;background:#10181f}
+.track-copy strong{font-weight:600;color:#e3e5e7;letter-spacing:.1px}
+.track-copy span{font-weight:600;color:#aeb3b7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.track-copy span:last-child{font-size:13px;color:#8e969c;line-height:20px}
+.clock{font-size:20px;line-height:24px;font-weight:600;color:#d9dde0;letter-spacing:.2px}
+.clock small,.tempo small{font-weight:600;color:#a6adb2;font-size:13px;line-height:20px}
+.clock .type{color:#7f898f;font-size:11px;font-weight:600}
+.tempo strong{font-weight:600;font-size:19px;line-height:23px;padding:0 6px;border-color:#a0c944;border-radius:7px;color:#e5eadc;background:#20251b}
+.deck-letter{font-weight:600;line-height:40px}
+.sync-strip{height:25px;background:#202224;border-top:1px solid #ffffff03;border-bottom:1px solid #0f1112;gap:4px}
+.sync-strip button{font-size:11px;font-weight:700;height:20px;letter-spacing:.5px;padding:0 11px;background:#282b2d;color:#889198}
+.sync-strip .master{background:#253440;color:#8da9bc}
+.beat-ruler{font-weight:600;color:#808a90;align-items:center}
+.wave{height:120px;background:#151718;border-bottom:1px solid #353a3d}
+.wave svg,.overview svg{shape-rendering:geometricPrecision}
+.playhead{background:#f4f6ec;width:1px;box-shadow:0 0 0 1px #0c101026}
+.playhead:before{left:-4px;border-left-width:4px;border-right-width:4px;border-top:6px solid #f4f6ec;top:0}
+.wave-flag{top:3px;background:#3199f5;opacity:.98}
+.wave-flag b{background:#3199f5;color:#091f32;font-size:11px;line-height:15px;height:15px;width:17px;padding-left:3px;font-weight:700}
+.overview-row{height:37px;margin-top:5px;gap:4px}
+.overview{background:#121516;border:1px solid #2f3437}
+.overview-row>button{background:#25292b;color:#849299;width:20px;display:grid;place-items:center}
+.overview-end{background:#202824;color:#84ab98;font-weight:600;font-size:12px;width:49px;letter-spacing:.2px}
+.view-window{border-color:#d7dfdd66;background:#e4edf40b}
+.pitch{height:178px;opacity:.76}
+.pitch-track{height:159px;width:16px;background:repeating-linear-gradient(to bottom,#52595d 0 1px,transparent 1px 8px)}
+.pitch-track:after{left:6px;width:4px;background:#080b0d;border-inline:1px solid #23282b}
+.pitch-handle{top:84px;background:linear-gradient(#667077,#454c51);border:1px solid #7c8488;box-shadow:0 0 0 1px #0c0e0f,0 2px 3px #0008;height:12px;border-radius:1px}
+.pitch-handle:after{margin:4px 3px 0;border-color:#bac0c3}
+.transport{height:50px;margin-top:11px;padding-top:10px;border-color:#34383b;gap:4px}
+.transport button{font-size:13px;font-weight:600;letter-spacing:.3px;height:36px;color:#c7cdd1;padding:0 7px;border-radius:2px}
+.transport button:disabled{color:#7e878d}
+.transport .play{background:#ade344;border:1px solid #c0ef64;width:71px;color:#253713;box-shadow:inset 0 1px #d3f98c66}
+.transport .play:hover:not(:disabled){background:#bbed58}
+.play svg{width:20px;height:20px}
+.transport .play:disabled{background:#30372a;border-color:#414a39;color:#829075;box-shadow:none}
+.transport #cue{color:#d3d9dd}
+.transport #cue:disabled{color:#7e878d}
+.loop-size,.loop-points{border-color:#383e42;border-radius:2px;overflow:hidden}
+.loop-size button{width:42px;background:#23272a;border-right:1px solid #2c3236}
+.loop-size .chosen{background:#303639;color:#a7b1b8}
+.loop-size .arrow{width:19px;display:grid;place-items:center}
+.loop-points button{width:43px;border-color:#353b3f;display:grid;place-items:center}
+.hotcues{height:24px;gap:3px;margin-top:10px}
+.hotcues button{font-size:13px;font-weight:700;padding:1px 8px;border:1px solid #353c41;border-radius:1px;background:#282d31;color:#a7b1b7;box-shadow:inset 0 1px #ffffff03}
+.hotcues .filled{background:#168df1;border-color:#39a6ff;color:#08243a}
+.hotcues .filled:hover:not(:disabled){background:#44a7fb}
+.hotcues button:disabled{background:#252a2e;border-color:#30363a;color:#747e85}
+.hotcues [aria-pressed=true]:after{height:2px;background:#c8eaff;left:5px;right:5px}
+.cue-toolbar{height:30px;gap:4px;font-size:12px;font-weight:600;color:#adb8be}
+.cue-toolbar button{height:24px;min-width:25px;display:grid;place-items:center;padding:0 4px;color:#849198}
+.cue-toolbar .cue-readout{font-weight:600;letter-spacing:.25px;word-spacing:3px}
+.cue-toolbar select{color:#87949d;font-weight:600;font-size:12px}
+.cue-toolbar .map{font-size:10px;font-weight:700;letter-spacing:.5px}
+.ui-icon{display:block;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.loop-points .ui-icon{width:21px;height:21px}
+.beat-ruler .ui-icon{width:13px;height:13px}
+.empty .pitch{opacity:.4}
+.empty .overview-end{color:#6c7d74}
+.refinement-note{font-size:12px;letter-spacing:.2px;color:#aebba3;margin:0 0 18px;font-weight:600}
+@media(max-width:1190px){.has-references .comparison{grid-template-columns:minmax(0,1fr)}.candidate,.reference-column{width:100%;max-width:760px;margin:auto}}
+@media(max-width:650px){header{padding:18px 14px;align-items:flex-start}h1{font-size:20px}.badge{font-size:9px;padding:6px}main{padding:18px 12px}.review-controls .hint{margin:3px 0;width:100%}.deck{padding:10px 8px 6px}.deck-header{grid-template-columns:44px minmax(0,1fr) 65px 66px 20px;gap:5px;min-height:59px}.artwork,.artwork svg{width:44px;height:44px}.track-copy strong{font-size:14px;line-height:18px}.track-copy span{font-size:11px;line-height:15px}.clock{font-size:14px;line-height:18px}.clock small,.tempo small{font-size:11px;line-height:16px}.clock .type{font-size:10px}.tempo strong{font-size:14px;line-height:18px;padding:0 3px}.deck-letter{font-size:26px;line-height:29px}.wave-region{grid-template-columns:minmax(0,1fr) 24px;gap:7px}.pitch-handle{width:24px}.transport{height:auto;flex-wrap:wrap;gap:3px}.transport button{font-size:13px;padding:0 5px}.transport .play{width:60px}.loop-size{margin-left:auto}.loop-size button{width:31px}.loop-points{margin-left:0}.hotcues{height:30px}.cue-toolbar{gap:1px;font-size:11px}.cue-toolbar .cue-readout{margin-left:0}.cue-toolbar button{min-width:22px;padding:0 3px}.cue-toolbar select{max-width:62px}.review-controls button,.review-controls select{min-height:44px}}
+@container deck (max-width:560px){.transport{height:auto;flex-wrap:wrap}.loop-size button{width:30px}.loop-points{margin-left:0}.deck-header{grid-template-columns:52px minmax(0,1fr) 76px 78px 28px;gap:7px}.artwork,.artwork svg{width:52px;height:52px}.track-copy strong{font-size:16px}}
+@container deck (max-width:400px){.deck-header{grid-template-columns:40px minmax(0,1fr) 66px 22px;gap:5px;min-height:76px}.artwork,.artwork svg{width:40px;height:40px}.track-copy{grid-column:2;grid-row:1}.track-copy strong{font-size:14px;line-height:18px}.track-copy span{font-size:11px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.tempo{grid-column:3;grid-row:1}.deck-letter{grid-column:4;grid-row:1}.clock{grid-column:1 / -1;grid-row:2;display:flex;justify-content:flex-end;gap:10px;align-items:baseline;padding-bottom:3px}.clock .type{display:none}.transport .loop-size{margin-left:0}}
+</style>
+</head>
+<body>
+<header><div><h1>deck<b>craft</b> / refined deck</h1><p>Sharper waveforms. Stronger type. The same compact deck.</p></div><span class="badge">DESIGN ONLY · NO AUDIO</span></header>
+<main>
+<div class="review-controls" aria-label="Preview controls"><label>Preview <select id="preset"><option value="loaded">Loaded · paused</option><option value="playing">Playing appearance</option><option value="empty">Empty deck</option></select></label><label>Width <select id="width"><option value="normal">Reference scale</option><option value="compact">Compact · 540px</option></select></label><button id="comparison-toggle" aria-pressed="false" hidden>Deck only</button><span class="hint">Synthetic fixtures · no files, storage or audio connection</span></div>
+<div class="comparison">
+<section class="reference-column" aria-label="Supplied references"><h2 class="section-label">Your references <span>Deck + transport</span></h2><div class="references"><!-- PRIVATE_REFERENCES --></div><p class="deck-note">The two supplied screenshots, kept separate and unmodified. Included only in the private review copy.</p></section>
+<section class="candidate" aria-label="Proposed Deck Craft deck"><h2 class="section-label">Deck Craft · refined <span>Vector waveform + controls · B</span></h2><div style="container:deck / inline-size"><article class="deck" aria-label="Deck B visual prototype">
+<div class="deck-header"><div class="artwork" aria-label="Original Deck Craft synthetic artwork"><svg viewBox="0 0 62 62" aria-hidden="true"><rect width="62" height="62" fill="#111a21"/><path d="M8 20v22m7-30v38m8-29v20m8-33v46m8-38v30m8-26v22m7-16v10" stroke="#64d8fa" stroke-width="3"/><path d="M4 31h54" stroke="#d2fa69" stroke-width="1"/></svg></div><div class="track-copy"><strong id="title">Night Circuit</strong><span id="artist">Deck Craft Sessions</span><span id="collection">Synthetic fixture</span></div><div class="clock"><span id="remaining">−01:32</span><small id="elapsed">02:17</small><small class="type">Audio track</small></div><div class="tempo"><strong id="bpm">137.00</strong><small>+0.0%</small><small id="base-bpm">137.00</small></div><b class="deck-letter">B</b></div>
+<div class="wave-region"><div class="wave-main"><div class="sync-strip"><button disabled title="Beat sync is not implemented">SYNC</button><button class="master" disabled title="Tempo master is not implemented">MASTER</button><span class="beat-ruler" aria-hidden="true"><span>Ⅰ</span><span>Ⅰ</span><span>Ⅰ</span><span>◂Ⅰ</span><span>Ⅰ▸</span></span></div><div class="wave" aria-label="Synthetic multicolor waveform design, not analyzed audio"><svg id="detail-wave" viewBox="0 0 1000 104" preserveAspectRatio="none" role="img" aria-label="Illustrative detailed waveform"></svg><span class="wave-flag" style="left:22%"><b>3</b></span><span class="playhead"></span></div><div class="overview-row"><button disabled aria-label="Previous overview region — unavailable">Ⅰ◂</button><div class="overview"><svg id="overview-wave" viewBox="0 0 1000 37" preserveAspectRatio="none" role="img" aria-label="Illustrative full-track overview"></svg><span class="view-window" style="left:52%;width:16%"></span><span class="wave-flag" style="left:0%"><b>1</b></span><span class="wave-flag" style="left:24%"><b>2</b></span><span class="wave-flag" style="left:42%"><b>3</b></span><span class="playhead" id="overview-playhead"></span><input class="seek" id="seek" type="range" min="0" max="229" step=".1" value="137" aria-label="Preview seek position — no audio"></div><span class="overview-end">3m49</span></div></div><div class="pitch" role="img" aria-label="Disabled vertical pitch slider; pitch processing is not implemented" title="Pitch processing is not implemented"><span class="pitch-track"></span><span class="pitch-handle"></span></div></div>
+<div class="transport" aria-label="Transport"><button class="play" id="play" aria-label="Toggle playing appearance — no audio" aria-pressed="false"><svg class="play-icon" viewBox="0 0 24 24"><path d="M6 3 21 12 6 21Z"/></svg><svg class="pause-icon" viewBox="0 0 24 24"><path d="M5 3h5v18H5zM14 3h5v18h-5z"/></svg></button><button id="cue" title="Preview return to first manual cue">CUE</button><button disabled title="Cue-and-play behavior is not implemented">CUP</button><button disabled title="Flux mode is not implemented">FLX</button><button disabled title="Reverse playback is not implemented">REV</button><div class="loop-size" aria-label="Loop length — unavailable"><button class="arrow" disabled aria-label="Decrease loop length">‹</button><button class="chosen" disabled>4</button><button disabled>8</button><button disabled>16</button><button class="arrow" disabled aria-label="Increase loop length">›</button></div><div class="loop-points"><button disabled title="Loop in is not implemented">IN</button><button disabled title="Loop out is not implemented">OUT</button><button disabled aria-label="Enable loop — not implemented">↔</button></div></div>
+<div class="hotcues" aria-label="Eight-position cue bank"><button data-cue="0" class="filled" aria-label="Preview cue 1" aria-pressed="false">1</button><button data-cue="1" class="filled" aria-label="Preview cue 2" aria-pressed="false">2</button><button data-cue="2" class="filled" aria-label="Preview cue 3" aria-pressed="false">3</button><button data-cue="3" aria-label="Preview empty cue 4; Shift-click to store" aria-pressed="false">4</button><button disabled title="Slot 5 requires expanding the four-cue model">5</button><button disabled title="Slot 6 requires expanding the four-cue model">6</button><button disabled title="Slot 7 requires expanding the four-cue model">7</button><button disabled title="Slot 8 requires expanding the four-cue model">8</button></div>
+<div class="cue-toolbar"><button disabled aria-label="Previous cue — unavailable">Ⅰ◂</button><button disabled aria-label="Next cue — unavailable">▸Ⅰ</button><button disabled aria-label="Cue menu — unavailable">⌄</button><span class="cue-readout" id="cue-readout">1&nbsp; 0:00.0&nbsp; n.n.</span><select disabled aria-label="Cue type — unavailable"><option>Cue</option></select><button disabled aria-label="Move cue earlier — unavailable">‹</button><button disabled aria-label="Store cue from toolbar — unavailable">↥</button><button disabled aria-label="Move cue later — unavailable">›</button><button disabled aria-label="Delete cue — unavailable"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor"><path d="M2 4h12M6 4V2h4v2M4 6l1 8h6l1-8M7 6v6m2-6v6"/></svg></button><button class="map" disabled title="Controller mapping is not implemented">MAP</button></div>
+</article></div><p class="deck-note"><strong>High-detail synthetic waveform—not audio analysis or live playback.</strong> Dimmed controls are unavailable. Cue slots 5–8 remain reserved.</p><p class="status" role="status" id="status">Paused appearance. Play changes the icon only; the clock never runs.</p></section>
+</div>
+<details class="notes" open><summary>What this proof does—and does not—approve</summary><ul><li><strong>Composition:</strong> compact charcoal deck, metadata above the dominant waveform, full-track overview beneath it, pitch at right, then transport, loop controls, eight cue positions and the editing strip.</li><li><strong>Preserved identity:</strong> Deck Craft branding and stable A/B/C/D colors; blue is reserved for cue markers here. B remains cyan rather than copying the reference’s orange identity.</li><li><strong>Try it:</strong> change preview states, toggle Play, seek in the overview, jump to cues 1–3, or Shift-click a cue from 1–4 to store a mock position. These actions affect only this page’s in-memory fixture. Changing width never resets it.</li><li><strong>Not yet implemented:</strong> real frequency-color analysis, a high-resolution scrolling waveform, tempo/beat analysis, sync/master, pitch, CUP/FLX/REV, loops, eight functional cues, cue-type editing and controller mapping. No unsupported button sends a command.</li><li><strong>Next checkpoint:</strong> approve or correct the appearance before applying the treatment to the five layouts and custom canvas. This file does not change the running app, audio engine, private library or saved session. No installation or publication is included.</li></ul></details>
+</main>
+<script>
+'use strict';
+const $=s=>document.querySelector(s);
+const state={position:137,playing:false,empty:false,cues:[0,55,96,null],selected:0};
+const time=(n,decimal=false)=>{const t=Math.round(Math.max(0,n)*10);return String(Math.floor(t/600)).padStart(2,'0')+':'+String(Math.floor(t/10)%60).padStart(2,'0')+(decimal?'.'+t%10:'');};
+function drawWave(target,height,overview=false){
+ // High-density vector fixture, not decoded audio or frequency analysis.
+ // Continuous envelopes replace the earlier separated vertical bars.
+ const width=2048,count=4096,center=height/2;
+ const layers=[[],[],[]];
+ const fract=n=>n-Math.floor(n);
+ const noise=n=>fract(Math.sin(n*127.1+31.7)*43758.5453);
+ for(let i=0;i<count;i++){
+  const x=i/(count-1),beat=x*(overview?192:10.8)+.08,phase=fract(beat),beatIndex=Math.floor(beat);
+  const kick=Math.exp(-phase*(9+noise(beatIndex+4)*7))*(.68+.45*noise(beatIndex+12));
+  const snare=Math.exp(-Math.pow((phase-.5-noise(beatIndex)*.05)/(.05+.035*noise(beatIndex+3)),2))*(.5+.6*noise(beatIndex+28));
+  const hat=Math.exp(-Math.pow((phase-.27)/.035,2))+.7*Math.exp(-Math.pow((phase-.78)/.04,2));
+  const phrase=.72+.14*Math.sin(x*19)+.1*Math.sin(x*51);
+  const arrangement=overview?(x<.24?.25:x<.42?.65:x<.56?.9:x<.63?.32:.8):(x<.22?.6:1);
+  const grain=(.73+.27*noise(i))*(.64+.36*noise(Math.floor(i/4)+131));
+  const body=overview?(.7+.3*kick):(.19+.8*kick+.62*snare+.12*hat);
+  const outer=Math.min(.94,body*phrase*arrangement*grain*(overview?1.4:1.85));
+  const middle=Math.min(.86,((overview?.52:.11)+.43*snare+.23*hat+.17*kick)*arrangement*(.65+.35*noise(i+9)));
+  const inner=Math.min(.55,((overview?.26:.025)+.16*hat+.12*snare)*arrangement*(.55+.45*noise(i+77)));
+  [outer,middle,inner].forEach((amplitude,layer)=>layers[layer].push(Math.max(.006,amplitude)*(center-2)));
+ }
+ const contour=(values,offset=0)=>{
+  let top='',bottom='';
+  for(let i=0;i<count;i++){
+   const x=(i*width/(count-1)).toFixed(2),v=values[i];
+   top+=(i?'L':'M')+x+','+(center-v).toFixed(2);
+   const mirrored=values[count-1-i]*(.86+.12*Math.sin(i*.019+offset));
+   bottom+='L'+((count-1-i)*width/(count-1)).toFixed(2)+','+(center+mirrored).toFixed(2);
+  }
+  return top+bottom+'Z';
+ };
+ const id=target.id;
+ const stops=(values)=>values.map(([at,color])=>`<stop offset="${at}%" stop-color="${color}"/>`).join('');
+ const outerStops=[[0,'#53b69e'],[7,'#72c0ad'],[14,'#e1b952'],[21,'#f0be54'],[25,'#ed6035'],[29,'#b979d7'],[33,'#e883b8'],[38,'#e95742'],[43,'#dd6db1'],[49,'#b58cdc'],[54,'#f1683c'],[59,'#d67cbb'],[65,'#f07945'],[70,'#b788df'],[76,'#e765aa'],[82,'#ee6c3d'],[88,'#d579c8'],[94,'#bd8be0'],[100,'#e972b6']];
+ let grid='';
+ if(!overview)for(let i=0;i<27;i++){
+  const x=(i*width/26).toFixed(2),major=i%4===0;
+  grid+=`<path d="M${x} 0V${height}" stroke="${major?'#818b90':'#566068'}" stroke-opacity="${major?.32:.16}" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+ }
+ target.setAttribute('viewBox',`0 0 ${width} ${height}`);
+ target.dataset.samples=String(count);
+ target.innerHTML=`<defs><linearGradient id="${id}-body">${stops(outerStops)}</linearGradient><linearGradient id="${id}-mid">${stops([[0,'#d5cb63'],[19,'#f0ca64'],[25,'#d779b9'],[50,'#e88acb'],[70,'#ba98df'],[100,'#df87c6']])}</linearGradient><linearGradient id="${id}-core">${stops([[0,'#e8dc91'],[22,'#e6c68a'],[45,'#f3b5dc'],[73,'#d1b6ec'],[100,'#edb4dd']])}</linearGradient></defs>${grid}<path data-wave-layer="body" d="${contour(layers[0])}" fill="url(#${id}-body)"/><path data-wave-layer="mid" d="${contour(layers[1],1)}" fill="url(#${id}-mid)" opacity=".86"/><path data-wave-layer="core" d="${contour(layers[2],2)}" fill="url(#${id}-core)" opacity=".78"/><path d="M0 ${center}H${width}" stroke="#f4eadb" stroke-opacity=".22" stroke-width=".65" vector-effect="non-scaling-stroke"/>`;
+}
+function refineIcons(){
+ const icons={
+  previous:'<path d="M5 4v16m13-15L8 12l10 7Z"/>',
+  next:'<path d="M19 4v16M6 5l10 7-10 7Z"/>',
+  left:'<path d="m14 6-6 6 6 6"/>',
+  right:'<path d="m10 6 6 6-6 6"/>',
+  down:'<path d="m6 9 6 6 6-6"/>',
+  store:'<path d="M5 18h14M12 15V4m-5 5 5-5 5 5"/>',
+  loop:'<path d="M9 7H6a5 5 0 0 0 0 10h6l6-10h-6L6 17m9 0h3a5 5 0 0 0 0-10h-6"/>',
+  trash:'<path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/>'
+ };
+ const svg=name=>`<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true">${icons[name]}</svg>`;
+ const targets=[['.overview-row>button','previous'],['.loop-size .arrow:first-child','left'],['.loop-size .arrow:last-child','right'],['.loop-points button:last-child','loop'],['[aria-label="Previous cue — unavailable"]','previous'],['[aria-label="Next cue — unavailable"]','next'],['[aria-label="Cue menu — unavailable"]','down'],['[aria-label="Move cue earlier — unavailable"]','left'],['[aria-label="Store cue from toolbar — unavailable"]','store'],['[aria-label="Move cue later — unavailable"]','right'],['[aria-label="Delete cue — unavailable"]','trash']];
+ for(const [selector,name] of targets)$(selector).innerHTML=svg(name);
+ const ticks=$('.beat-ruler').children;
+ for(let i=0;i<3;i++)ticks[i].innerHTML='<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v10"/></svg>';
+ ticks[3].innerHTML=svg('previous');ticks[4].innerHTML=svg('next');
+}
+function render(message){
+ $('.deck').classList.toggle('playing',state.playing);$('.deck').classList.toggle('empty',state.empty);
+ $('#title').textContent=state.empty?'No track loaded':'Night Circuit';$('#artist').textContent=state.empty?'Deck B':'Deck Craft Sessions';$('#collection').textContent=state.empty?'Empty preview':'Synthetic fixture';
+ $('#remaining').textContent=state.empty?'−−:−−':'−'+time(229-state.position);$('#elapsed').textContent=state.empty?'−−:−−':time(state.position);
+ $('#bpm').textContent=state.empty?'—':'137.00';$('#base-bpm').textContent=state.empty?'—':'137.00';
+ $('#play').setAttribute('aria-pressed',String(state.playing));$('#play').disabled=state.empty;$('#cue').disabled=state.empty;$('#seek').disabled=state.empty;$('#seek').value=state.position;
+ $('#overview-playhead').style.left=state.position/229*100+'%';$('.view-window').style.left=Math.min(84,Math.max(0,state.position/229*100-8))+'%';
+ document.querySelectorAll('[data-cue]').forEach(button=>{const index=Number(button.dataset.cue);button.classList.toggle('filled',!state.empty&&state.cues[index]!==null);button.disabled=state.empty;button.setAttribute('aria-pressed',String(!state.empty&&state.selected===index));});
+ $('#cue-readout').textContent=state.empty?'—  —:—   n.n.':`${state.selected+1}  ${state.cues[state.selected]===null?'—:—':time(state.cues[state.selected],true)}  n.n.`;
+ if(message)$('#status').textContent=message;
+}
+$('#play').addEventListener('click',()=>{state.playing=!state.playing;render(state.playing?'Playing appearance only. No audio and no advancing clock.':'Paused appearance. No audio.');});
+$('#cue').addEventListener('click',()=>{state.position=state.cues[0]??0;state.playing=false;state.selected=0;render('Returned to the first mock cue; paused.');});
+$('#seek').addEventListener('input',event=>{state.position=Number(event.target.value);render('Mock overview seek. The detailed waveform remains an illustrative fixture.');});
+for(const button of document.querySelectorAll('[data-cue]'))button.addEventListener('click',event=>{const index=Number(button.dataset.cue);state.selected=index;if(event.shiftKey){state.cues[index]=state.position;render(`Stored mock cue ${index+1}. No application data changed.`);}else if(state.cues[index]!==null){state.position=state.cues[index];render(`Jumped to mock cue ${index+1}. No audio.`);}else render('Empty mock slot. Shift-click to store the current preview position.');});
+$('#preset').addEventListener('change',event=>{Object.assign(state,{position:137,playing:event.target.value==='playing',empty:event.target.value==='empty',cues:[0,55,96,null],selected:0});render(state.empty?'Empty appearance. No source is loaded.':'Fixture reset. No audio; clocks are static.');});
+$('#width').addEventListener('change',event=>document.body.classList.toggle('size-compact',event.target.value==='compact'));
+$('#comparison-toggle').addEventListener('click',event=>{const solo=document.body.classList.toggle('solo');event.target.setAttribute('aria-pressed',String(solo));event.target.textContent=solo?'Side by side':'Deck only';});
+if($('.references img')){document.body.classList.add('has-references');$('#comparison-toggle').hidden=false;}
+drawWave($('#detail-wave'),120);drawWave($('#overview-wave'),37,true);refineIcons();render();
+</script>
+</body>
+</html>

@@ -36,7 +36,7 @@ try {
  checks.push('empty canvas entry preserves current session and original Studio Sync default');
  await click('[data-editor="add"][data-kind="deck"]');let w=await workspace();assert.equal(w.snapshot.items.length,1);const id=w.snapshot.items[0].id;
  await drag(`[data-item-id="${id}"] .widget-grip`,83,57);w=await workspace();assert.equal(w.snapshot.items[0].x,80);assert.equal(w.snapshot.items[0].y,60);
- await drag(`[data-item-id="${id}"] .widget-resize`,63,43);w=await workspace();assert.equal(w.snapshot.items[0].width,620);assert.equal(w.snapshot.items[0].height,440);
+ await drag(`[data-item-id="${id}"] .widget-resize`,63,43);w=await workspace();assert.equal(w.snapshot.items[0].width,620);assert.equal(w.snapshot.items[0].height,600);
  await change('[data-editor-field="accent"]','#e0a45c');await change('[data-editor-field="name"]','Copper <deck>');await change('[data-editor-field="deck"]','C');
  assert.equal(await evaluate("document.querySelector('.canvas-widget .widget-grip strong').textContent"),'Copper <deck>');assert.equal(await evaluate("document.querySelectorAll('deck').length"),0);
  await click('[data-editor="save-template"]');await saveName('Copper template');assert.equal((await workspace()).templates.length,1);
