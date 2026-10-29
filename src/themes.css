@@ -1,0 +1,532 @@
+/* Component and application themes. A theme sets only these tokens; Play lime, cue blue, deck identity colors and the dark waveform glass are fixed. */
+body{--raised2:#34383b;--well:#0c0d0e;--accent-ink:#1f3009;--stage:var(--bg)}
+:root body[data-theme="graphite"],.canvas-widget[data-theme="graphite"],.preview-component[data-theme="graphite"]{--bg:#101112;--panel:#1b1c1d;--raised:#2a2d2f;--raised2:#34383b;--well:#0c0d0e;--line:#343638;--ink:#e6e8ea;--muted:#b0b6ba;--faint:#8a949a;--accent:#d2fa69;--accent-ink:#1f3009;--a:#d2fa69;--b:#64d8fa;--c:#ffbc70;--d:#c6a0ff;color-scheme:dark}
+:root body[data-theme="midnight"],.canvas-widget[data-theme="midnight"],.preview-component[data-theme="midnight"]{--bg:#0a1018;--panel:#121b27;--raised:#1e2b3c;--raised2:#293a4f;--well:#080d14;--line:#26374b;--ink:#e5eef8;--muted:#aabed2;--faint:#82a0ba;--accent:#5cc8ff;--accent-ink:#04202f;--a:#d2fa69;--b:#64d8fa;--c:#ffbc70;--d:#c6a0ff;color-scheme:dark}
+:root body[data-theme="ember"],.canvas-widget[data-theme="ember"],.preview-component[data-theme="ember"]{--bg:#120e0b;--panel:#1f1914;--raised:#31281f;--raised2:#41352a;--well:#0d0a08;--line:#3f3328;--ink:#f3e9de;--muted:#c9b7a4;--faint:#a28d78;--accent:#ffb04a;--accent-ink:#2d1800;--a:#d2fa69;--b:#64d8fa;--c:#ffbc70;--d:#c6a0ff;color-scheme:dark}
+:root body[data-theme="orchid"],.canvas-widget[data-theme="orchid"],.preview-component[data-theme="orchid"]{--bg:#110d17;--panel:#1c1625;--raised:#2c2339;--raised2:#3a2f4b;--well:#0b0810;--line:#3b3050;--ink:#f0e8f9;--muted:#bfaed4;--faint:#9784b0;--accent:#c79bff;--accent-ink:#24103d;--a:#d2fa69;--b:#64d8fa;--c:#ffbc70;--d:#c6a0ff;color-scheme:dark}
+:root body[data-theme="daylight"],.canvas-widget[data-theme="daylight"],.preview-component[data-theme="daylight"]{--bg:#e4e8eb;--panel:#f6f8f9;--raised:#e2e7ea;--raised2:#d3dade;--well:#d6dce0;--line:#bcc5cb;--ink:#1a2126;--muted:#46525a;--faint:#5b6770;--accent:#3f7a00;--accent-ink:#ffffff;--a:#4f8a00;--b:#0b7aa0;--c:#b35f08;--d:#7a4cc2;color-scheme:light}
+/* Widgets paint their own surface from the active theme. */
+.canvas-widget{background:var(--panel);color:var(--ink);border-radius:6px}
+/* Light theme: the waveform and overview stay dark glass so the palette keeps its meaning. */
+/* Theme picker in the application bar matches the layout picker. */
+.layout-choice.theme-choice{margin-left:0}
+body.refined .theme-picker{background:var(--raised);border-color:color-mix(in srgb,var(--ink) 22%,transparent);color:var(--ink);border-radius:3px;height:37px;min-width:118px;font:12px 'Segoe UI',Arial,sans-serif;letter-spacing:0;padding:6px 10px}
+.canvas-theme-all{flex-direction:row!important;align-items:center;gap:7px!important}.canvas-theme-all select{min-width:112px}
+@media(max-width:650px){
+ body.refined .appbar{grid-template-areas:'brand layout mixer' 'mode mode mode' 'theme theme theme' 'notice notice notice'}
+ .layout-choice.theme-choice{grid-area:theme;display:block;width:100%;margin:0;position:relative}
+ body.refined .theme-picker{display:block;width:100%;min-width:0;height:38px;margin-top:2px}
+ .canvas-mode .appbar{grid-template-areas:'brand layout mixer' 'theme theme theme' 'notice notice notice'}
+}
+/* Fixed dark glass behind waveforms in every theme. */
+body{--glass:#0c0d0e}
+/* Deck identity follows the theme's A/B/C/D tokens (darker hues of the same family on Daylight). */
+body [data-deck="A"],.canvas-widget [data-deck="A"]{--deck:var(--a)!important}
+body [data-deck="B"],.canvas-widget [data-deck="B"]{--deck:var(--b)!important}
+body [data-deck="C"],.canvas-widget [data-deck="C"]{--deck:var(--c)!important}
+body [data-deck="D"],.canvas-widget [data-deck="D"]{--deck:var(--d)!important}
+/* Leftovers from the historical stylesheet, which stays unchanged. */
+body.refined .wordmark{color:var(--ink)}
+body.refined .collection-chips{background:var(--panel);border-bottom-color:var(--line)}
+body.refined .collection-chips .crate{color:var(--muted)}
+body.refined .collection-chips .crate small{color:var(--faint)}
+body.refined .collection-chips .crate.active{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));background:var(--raised);color:var(--accent)}
+body.refined tbody tr.selected .name-cell b{color:var(--ink)}
+body.refined section.deck.face .beat-dots{font-size:10px}
+/* Local files have no tempo analysis yet: say so instead of showing an empty highlighted box. */
+body.refined section.deck.face .dk-tempo.pending .bpm-value{border-style:dashed;border-color:var(--line);background:transparent;color:var(--faint);box-shadow:none;font-size:16px}
+body.refined section.deck.face .dk-tempo.pending .dk-key{color:var(--faint)}
+/* ---- Minimum text size (generated; see scripts/min-text.py) ---- */
+body{font-size:max(10px,12px)}
+.wordmark{font-size:max(10px,17px)}
+.wordmark small{font-size:max(10px,9px)}
+.mode{font-size:max(10px,11px)}
+.session-name{font-size:max(10px,11px)}
+.master-section{font-size:max(10px,9px)}
+.statusbar{font-size:max(10px,8px)}
+.deck-letter{font-size:max(10px,12px)}
+.track-title{font-size:max(10px,18px)}
+.track-artist{font-size:max(10px,11px)}
+.bpm strong{font-size:max(10px,28px)}
+.bpm small{font-size:max(10px,8px)}
+.key-value{font-size:max(10px,10px)}
+.platter-mark{font-size:max(10px,7px)}
+.micro{font-size:max(10px,8px)}
+.remaining{font-size:max(10px,34px)}
+.remaining>span{font-size:max(10px,18px)}
+.elapsed{font-size:max(10px,10px)}
+.elapsed>span{font-size:max(10px,9px)}
+.beat-count{font-size:max(10px,25px)}
+.beat-count small{font-size:max(10px,8px)}
+.pitch{font-size:max(10px,8px)}
+.pitch output{font-size:max(10px,9px)}
+.wave-flag{font-size:max(10px,7px)}
+.transport button{font-size:max(10px,9px)}
+.transport .sync{font-size:max(10px,8px)}
+.transport .tiny{font-size:max(10px,14px)}
+.pad strong{font-size:max(10px,8px)}
+.pad span{font-size:max(10px,8px)}
+.pad small{font-size:max(10px,8px)}
+.mixer-top{font-size:max(10px,8px)}
+.channel-title{font-size:max(10px,10px)}
+.channel-title span{font-size:max(10px,5px)}
+.knob small{font-size:max(10px,7px)}
+.fader-scale{font-size:max(10px,6px)}
+.crossfader{font-size:max(10px,8px)}
+.cross-marks{font-size:max(10px,6px)}
+.rail-heading{font-size:max(10px,8px)}
+.crate{font-size:max(10px,11px)}
+.crate small{font-size:max(10px,8px)}
+.rail-note{font-size:max(10px,10px)}
+.rail-bottom{font-size:max(10px,8px)}
+.rail-bottom small{font-size:max(10px,7px)}
+.library-title{font-size:max(10px,10px)}
+.track-count{font-size:max(10px,8px)}
+.searchbox input{font-size:max(10px,9px)}
+.searchbox kbd{font-size:max(10px,7px)}
+table{font-size:max(10px,12px)}
+th{font-size:max(10px,9px)}
+td.track-no,th.track-no{font-size:max(10px,8px)}
+.name-cell b{font-size:max(10px,12px)}
+.name-cell span{font-size:max(10px,8px)}
+.bpm-cell,.time-cell{font-size:max(10px,11px)}
+.key{font-size:max(10px,10px)}
+.empty{font-size:max(10px,12px)}
+.wave-labels{font-size:max(10px,7px)}
+.wave-caption{font-size:max(10px,9px)}
+.effect-name{font-size:max(10px,10px)}
+.effects .knob small{font-size:max(10px,5px)}
+.effect-beat{font-size:max(10px,13px)}
+.effect-beat small{font-size:max(10px,6px)}
+.effect-on{font-size:max(10px,7px)}
+.fx-trailing{font-size:max(10px,7px)}
+.deck-time .remaining{font-size:max(10px,16px)}
+.beat-dots{font-size:max(10px,8px)}
+.compact .track-title{font-size:max(10px,16px)}
+.compact .bpm strong{font-size:max(10px,25px)}
+.strip .remaining{font-size:max(10px,28px)}
+.toast{font-size:max(10px,11px)}
+.info-dialog h2{font-size:max(10px,20px)}
+.signal .strip .track-title{font-size:max(10px,19px)}
+.signal .strip .remaining{font-size:max(10px,27px)}
+.signal .strip .bpm strong{font-size:max(10px,30px)}
+.signal .pad span{font-size:max(10px,7px)}
+.signal .pad small{font-size:max(10px,7px)}
+.alloy-top{font-size:max(10px,9px)}
+.alloy .track-title{font-size:max(10px,21px)}
+.alloy .bpm strong{font-size:max(10px,29px)}
+.alloy .deck-time .remaining{font-size:max(10px,20px)}
+.nocturne .track-title{font-size:max(10px,22px)}
+.nocturne .remaining{font-size:max(10px,33px)}
+.nocturne .pad span{font-size:max(10px,8px)}
+.tower-head{font-size:max(10px,8px)}
+.tower-head b{font-size:max(10px,11px)}
+.tower-bars{font-size:max(10px,9px)}
+.tower-bars b{font-size:max(10px,20px)}
+.tower-loop{font-size:max(10px,7px)}
+.mini-mixer .knob small{font-size:max(10px,5px)}
+.studio .library-title{font-size:max(10px,10px)}
+.studio .name-cell b{font-size:max(10px,12px)}
+.studio .compact .track-title{font-size:max(10px,16px)}
+.studio .compact .deck-letter{font-size:max(10px,10px)}
+.studio .compact .bpm strong{font-size:max(10px,23px)}
+.studio .compact .bpm small{font-size:max(10px,7px)}
+.studio .transport .cue{font-size:max(10px,8px)}
+.studio .transport .sync{font-size:max(10px,7px)}
+.studio .pad span{font-size:max(10px,8px)}
+.studio .pad small{font-size:max(10px,7px)}
+.studio-channel>span{font-size:max(10px,11px)}
+.studio-channel .knob small{font-size:max(10px,5px)}
+.studio-summary{font-size:max(10px,8px)}
+@media(max-width:1150px){
+.remaining{font-size:max(10px,29px)}
+.bpm strong{font-size:max(10px,24px)}
+.track-title{font-size:max(10px,16px)}
+.nocturne .track-title{font-size:max(10px,18px)}
+.nocturne .remaining{font-size:max(10px,28px)}
+}
+@media(max-width:850px){
+.remaining{font-size:max(10px,25px)}
+.nocturne .remaining{font-size:max(10px,25px)}
+.nocturne .track-title{font-size:max(10px,18px)}
+}
+@media(max-width:560px){
+.wordmark{font-size:max(10px,17px)}
+.mode{font-size:max(10px,10px)}
+.wave-labels{font-size:max(10px,6px)}
+.track-title{font-size:max(10px,18px)}
+.track-artist{font-size:max(10px,11px)}
+.bpm strong{font-size:max(10px,27px)}
+.remaining{font-size:max(10px,31px)}
+.pad span{font-size:max(10px,8px)}
+.pad small{font-size:max(10px,8px)}
+.pad strong{font-size:max(10px,8px)}
+.library-title{font-size:max(10px,11px)}
+.searchbox input{font-size:max(10px,11px)}
+.name-cell b{font-size:max(10px,11px)}
+.name-cell span{font-size:max(10px,9px)}
+.key{font-size:max(10px,9px)}
+.bpm-cell{font-size:max(10px,10px)}
+.statusbar{font-size:max(10px,7px)}
+.effects .effect-name{font-size:max(10px,9px)}
+.effects .micro{font-size:max(10px,7px)}
+.signal .strip .track-title{font-size:max(10px,18px)}
+.alloy-top{font-size:max(10px,7px)}
+.alloy .track-title{font-size:max(10px,19px)}
+.alloy .deck-time .remaining{font-size:max(10px,21px)}
+.alloy .pad span{font-size:max(10px,7px)}
+.nocturne .track-title{font-size:max(10px,21px)}
+.nocturne .remaining{font-size:max(10px,30px)}
+.studio .compact .track-title{font-size:max(10px,19px)}
+.studio .compact .bpm strong{font-size:max(10px,27px)}
+.studio .compact .deck-time .remaining{font-size:max(10px,20px)}
+.studio .pad span{font-size:max(10px,8px)}
+.studio .pad small{font-size:max(10px,8px)}
+.studio .studio-summary{font-size:max(10px,7px)}
+}
+.refined{font-size:max(10px,13px)}
+.refined .wordmark{font-size:max(10px,19px)}
+.refined .wordmark small{font-size:max(10px,9px)}
+.refined .mode{font-size:max(10px,12px)}
+.refined .session-name{font-size:max(10px,11px)}
+.refined .session-sub{font-size:max(10px,10px)}
+.refined .master-section{font-size:max(10px,10px)}
+.refined .deck-letter{font-size:max(10px,12px)}
+.refined .track-title{font-size:max(10px,20px)}
+.refined .track-artist{font-size:max(10px,12px)}
+.refined .track-artist>span{font-size:max(10px,10px)}
+.refined .bpm strong{font-size:max(10px,31px)}
+.refined .bpm small{font-size:max(10px,9px)}
+.refined .key-value{font-size:max(10px,11px)}
+.refined .remaining{font-size:max(10px,30px)}
+.refined .remaining>span{font-size:max(10px,19px)}
+.refined .elapsed{font-size:max(10px,11px)}
+.refined .pitch{font-size:max(10px,9px)}
+.refined .pitch output{font-size:max(10px,11px)}
+.refined .transport button{font-size:max(10px,10px)}
+.refined .transport .sync{font-size:max(10px,9px)}
+.refined .transport .loop{font-size:max(10px,11px)}
+.refined .transport .tiny{font-size:max(10px,15px)}
+.refined .pad span{font-size:max(10px,9px)}
+.refined .pad small{font-size:max(10px,9px)}
+.refined .pad strong{font-size:max(10px,8px)}
+.refined .wave-flag{font-size:max(10px,8px)}
+.refined .rail-heading{font-size:max(10px,9px)}
+.refined .crate{font-size:max(10px,12px)}
+.refined .crate small{font-size:max(10px,9px)}
+.refined .rail-note{font-size:max(10px,11px)}
+.refined .rail-bottom{font-size:max(10px,9px)}
+.refined .rail-bottom small{font-size:max(10px,8px)}
+.refined .library-title{font-size:max(10px,12px)}
+.refined .track-count{font-size:max(10px,9px)}
+.refined .searchbox input{font-size:max(10px,11px)}
+.refined .searchbox kbd{font-size:max(10px,8px)}
+.refined th{font-size:max(10px,9px)}
+.refined td{font-size:max(10px,12px)}
+.refined .name-cell b{font-size:max(10px,12px)}
+.refined .bpm-cell,.refined .time-cell{font-size:max(10px,11px)}
+.refined .key{font-size:max(10px,10px)}
+.refined .mixer-top{font-size:max(10px,9px)}
+.refined .channel-title{font-size:max(10px,11px)}
+.refined .knob small{font-size:max(10px,7px)}
+.refined .fader-scale{font-size:max(10px,7px)}
+.refined .crossfader{font-size:max(10px,10px)}
+.refined .cross-marks{font-size:max(10px,7px)}
+.refined .effects .micro{font-size:max(10px,9px)}
+.refined .effects .effect-name{font-size:max(10px,10px)}
+.refined .effects .effect-beat{font-size:max(10px,13px)}
+.refined .effects .effect-beat small{font-size:max(10px,7px)}
+.refined .effects .effect-on{font-size:max(10px,8px)}
+.refined .effects .knob small{font-size:max(10px,6px)}
+.refined .fx-trailing{font-size:max(10px,8px)}
+.precision-ruler{font-size:max(10px,8px)}
+.wave-channel-name{font-size:max(10px,10px)}
+.wave-channel-name i{font-size:max(10px,9px)}
+.section-label{font-size:max(10px,9px)}
+.section-label small{font-size:max(10px,8px)}
+.plot-tools button,.cues-toggle{font-size:max(10px,10px)}
+.cue-ribbon-label{font-size:max(10px,8px)}
+.performance-toolbar strong{font-size:max(10px,12px)}
+.performance-toolbar span{font-size:max(10px,9px)}
+.mixer-open{font-size:max(10px,10px)}
+.dock-letter{font-size:max(10px,12px)}
+.precision-dock .knob small{font-size:max(10px,6px)}
+.dock-level{font-size:max(10px,8px)}
+.collection-chips .crate{font-size:max(10px,10px)}
+.collection-chips .crate small{font-size:max(10px,8px)}
+.drawer-heading strong{font-size:max(10px,15px)}
+.mixer-close{font-size:max(10px,18px)}
+.mixer-dialog>p{font-size:max(10px,10px)}
+.refined .info-dialog p{font-size:max(10px,12px)}
+.s-one .strip .track-title{font-size:max(10px,23px)}
+.s-one .strip .bpm strong{font-size:max(10px,34px)}
+.s-one .strip .remaining{font-size:max(10px,29px)}
+.s-one .dual-cue-ribbons .pad small{font-size:max(10px,8px)}
+.s-wide .strip .track-title{font-size:max(10px,24px)}
+.s-wide .strip .bpm strong{font-size:max(10px,35px)}
+.s-wide .strip .remaining{font-size:max(10px,30px)}
+.studio.refined .library-title{font-size:max(10px,12px)}
+.studio.refined .name-cell b{font-size:max(10px,12px)}
+.studio.refined .name-cell span{font-size:max(10px,10px)}
+.studio.refined .bpm-cell{font-size:max(10px,10px)}
+.studio.refined .key{font-size:max(10px,10px)}
+.studio.refined .compact .track-title{font-size:max(10px,19px)}
+.studio.refined .compact .track-artist{font-size:max(10px,11px)}
+.studio.refined .compact .deck-letter{font-size:max(10px,11px)}
+.studio.refined .compact .bpm strong{font-size:max(10px,28px)}
+.studio.refined .compact .bpm small{font-size:max(10px,8px)}
+.studio.refined .compact .key-value{font-size:max(10px,10px)}
+.studio.refined .compact .deck-time .remaining{font-size:max(10px,20px)}
+.studio.refined .compact .elapsed{font-size:max(10px,10px)}
+.studio.refined .compact .beat-dots{font-size:max(10px,8px)}
+.studio.refined .compact .transport .cue{font-size:max(10px,9px)}
+.studio.refined .compact .transport .sync{font-size:max(10px,8px)}
+.studio.refined .compact .pad span{font-size:max(10px,8px)}
+.studio.refined .compact .pad small{font-size:max(10px,8px)}
+.linear-meta .track-title{font-size:max(10px,18px)}
+.linear-meta .track-artist{font-size:max(10px,11px)}
+.linear-meta .bpm strong{font-size:max(10px,26px)}
+.linear-meta .bpm small{font-size:max(10px,7px)}
+.linear-clock .remaining{font-size:max(10px,20px)}
+.linear-clock .elapsed{font-size:max(10px,9px)}
+.studio.refined .linear-playback .transport .cue{font-size:max(10px,9px)}
+.studio.refined .linear-playback .transport .sync{font-size:max(10px,8px)}
+.linear-phrase{font-size:max(10px,7px)}
+.linear-phrase i{font-size:max(10px,8px)}
+.linear-foot .cues-toggle{font-size:max(10px,9px)}
+.linear-foot .cues-toggle>span{font-size:max(10px,7px)}
+.sync-top strong{font-size:max(10px,12px)}
+.sync-top span{font-size:max(10px,9px)}
+.pair-selector button{font-size:max(10px,9px)}
+.sync-alignment .precision-ruler{font-size:max(10px,7px)}
+.sync-alignment .wave-channel-name{font-size:max(10px,9px)}
+.sync-alignment .wave-channel-name i{font-size:max(10px,8px)}
+.studio.s-sync .compact .track-title{font-size:max(10px,18px)}
+.studio.s-sync .compact .bpm strong{font-size:max(10px,26px)}
+.studio.s-sync .compact .deck-letter{font-size:max(10px,10px)}
+.studio.s-sync .compact .deck-time .remaining{font-size:max(10px,18px)}
+.studio.s-sync .compact .elapsed{font-size:max(10px,9px)}
+.studio.s-sync .compact .pad span{font-size:max(10px,7px)}
+.studio.s-sync .compact .pad small{font-size:max(10px,7px)}
+.studio.s-sync .wave-group .wave-flag{font-size:max(10px,7px)}
+@media(min-width:1600px){
+.studio.refined .compact .track-title{font-size:max(10px,21px)}
+}
+@media(max-width:1250px){
+.refined .track-title{font-size:max(10px,18px)}
+.s-one .strip .track-title{font-size:max(10px,21px)}
+.s-one .strip .bpm strong{font-size:max(10px,30px)}
+.s-one .strip .remaining{font-size:max(10px,27px)}
+.s-wide .strip .track-title{font-size:max(10px,22px)}
+.s-wide .strip .bpm strong{font-size:max(10px,31px)}
+.studio.refined .compact .track-title{font-size:max(10px,18px)}
+.studio.refined .compact .bpm strong{font-size:max(10px,26px)}
+.studio.refined .dock-level{font-size:max(10px,7px)}
+.linear-meta .track-title{font-size:max(10px,17px)}
+.linear-clock .remaining{font-size:max(10px,18px)}
+.linear-meta .bpm strong{font-size:max(10px,24px)}
+.studio.s-sync .compact .track-title{font-size:max(10px,17px)}
+}
+@media(max-width:980px){
+.s-one .strip .track-title{font-size:max(10px,19px)}
+.s-one .strip .bpm strong{font-size:max(10px,27px)}
+.s-one .strip .remaining{font-size:max(10px,25px)}
+}
+@media(max-width:650px){
+.refined .wordmark{font-size:max(10px,18px)}
+.refined .mode{font-size:max(10px,11px)}
+.s-one .strip .track-title,.s-wide .strip .track-title{font-size:max(10px,22px)}
+.s-one .strip .bpm strong,.s-wide .strip .bpm strong{font-size:max(10px,31px)}
+.s-one .strip .remaining,.s-wide .strip .remaining{font-size:max(10px,28px)}
+.refined .transport .cue,.s-one .strip .transport .cue{font-size:max(10px,10px)}
+.refined .transport .sync,.s-one .strip .transport .sync{font-size:max(10px,9px)}
+.section-label{font-size:max(10px,8px)}
+.plot-tools button{font-size:max(10px,9px)}
+.precision-ruler{font-size:max(10px,7px)}
+.wave-channel-name{font-size:max(10px,9px)}
+.wave-channel-name i{font-size:max(10px,8px)}
+.refined .wave-flag{font-size:max(10px,7px)}
+.refined .pad span{font-size:max(10px,8px)}
+.refined .pad small{font-size:max(10px,8px)}
+.s-one .signal-console>.mixer .mixer-top{font-size:max(10px,8px)}
+.refined .library-title,.studio.refined .library-title{font-size:max(10px,12px)}
+.refined .searchbox input{font-size:max(10px,11px)}
+.refined .library .name-cell span,.studio.refined .library .name-cell span{font-size:max(10px,9px)}
+.refined .library .name-cell b{font-size:max(10px,11px)}
+.refined .bpm-cell{font-size:max(10px,10px)}
+.refined .key{font-size:max(10px,9px)}
+.precision-dock .dock-level,.studio.refined .dock-level{font-size:max(10px,7px)}
+.studio.refined .compact .track-title{font-size:max(10px,20px)}
+.studio.refined .compact .bpm strong{font-size:max(10px,28px)}
+.studio.refined .compact .deck-letter{font-size:max(10px,11px)}
+.studio.refined .compact .deck-time .remaining{font-size:max(10px,20px)}
+.studio.refined .compact .elapsed{font-size:max(10px,10px)}
+.studio.refined .compact .transport .cue{font-size:max(10px,9px)}
+.studio.refined .compact .transport .sync{font-size:max(10px,8px)}
+.studio.refined .compact .pad span,.studio.refined .compact .pad small{font-size:max(10px,8px)}
+.performance-toolbar strong{font-size:max(10px,12px)}
+.performance-toolbar span{font-size:max(10px,7px)}
+.performance-toolbar .mixer-open{font-size:max(10px,9px)}
+.collection-chips .crate{font-size:max(10px,10px)}
+.collection-chips .crate small{font-size:max(10px,8px)}
+.linear-meta .deck-letter{font-size:max(10px,11px)}
+.linear-meta .track-title{font-size:max(10px,17px)}
+.linear-meta .track-artist{font-size:max(10px,10px)}
+.linear-meta .bpm strong{font-size:max(10px,24px)}
+.linear-meta .bpm small{font-size:max(10px,7px)}
+.linear-meta .key-value{font-size:max(10px,9px)}
+.studio.refined .linear-playback .transport .cue{font-size:max(10px,9px)}
+.studio.refined .linear-playback .transport .sync{font-size:max(10px,9px)}
+.linear-phrase{font-size:max(10px,7px)}
+.linear-phrase i{font-size:max(10px,8px)}
+.linear-foot .cues-toggle{font-size:max(10px,9px)}
+.sync-top strong{font-size:max(10px,12px)}
+.sync-top span{font-size:max(10px,8px)}
+.pair-selector button{font-size:max(10px,9px)}
+.sync-alignment .precision-ruler{font-size:max(10px,7px)}
+.studio.s-sync .compact .track-title{font-size:max(10px,20px)}
+.studio.s-sync .compact .bpm strong{font-size:max(10px,28px)}
+.studio.s-sync .compact .deck-letter{font-size:max(10px,11px)}
+.studio.s-sync .compact .deck-time .remaining{font-size:max(10px,20px)}
+.studio.s-sync .compact .elapsed{font-size:max(10px,10px)}
+.studio.s-sync .compact .pad span,.studio.s-sync .compact .pad small{font-size:max(10px,8px)}
+.refined .statusbar{font-size:max(10px,7px)}
+.linear-clock .remaining{font-size:max(10px,19px)}
+.linear-clock .elapsed{font-size:max(10px,9px)}
+}
+body.refined .wordmark{font-size:max(10px,22px)}
+body.refined .layout-choice{font-size:max(10px,9px)}
+body.refined .deck:is(.compact,.strip,.linear-deck) .deck-letter{font-size:max(10px,14px)}
+body.refined .deck:is(.compact,.strip,.linear-deck) .track-title{font-size:max(10px,19px)}
+body.refined .deck:is(.compact,.strip,.linear-deck) .track-artist{font-size:max(10px,11px)}
+body.refined .deck:is(.compact,.strip,.linear-deck) .bpm strong{font-size:max(10px,23px)}
+body.refined .deck:is(.compact,.strip,.linear-deck) .bpm small{font-size:max(10px,8px)}
+body.refined .deck:is(.compact,.strip,.linear-deck) .deck-time .remaining{font-size:max(10px,11px)}
+body.refined .deck:is(.compact,.strip,.linear-deck) .beat-dots{font-size:max(10px,8px)}
+body.refined .deck:is(.compact,.strip,.linear-deck) .transport .cue{font-size:max(10px,10px)}
+body.studio.refined .deck.compact .pad :is(span,small){font-size:max(10px,8px)}
+body.studio.refined .linear-clock .elapsed{font-size:max(10px,10px)}
+body.signal.refined .deck.strip .track-title{font-size:max(10px,22px)}
+body.refined .library th{font-size:max(10px,9px)}
+@media(max-width:1250px){
+body.refined .deck.compact .track-title{font-size:max(10px,17px)}
+body.refined .deck.linear-deck .track-title{font-size:max(10px,17px)}
+}
+@media(max-width:650px){
+body.refined .wordmark{font-size:max(10px,18px)}
+body.refined .deck.compact .track-title{font-size:max(10px,20px)}
+body.refined .deck.linear-deck .track-title{font-size:max(10px,17px)}
+body.signal.refined .deck.strip .track-title{font-size:max(10px,20px)}
+}
+.layout-choice{font-size:max(10px,8px)}
+.layout-picker{font-size:max(10px,12px)}
+.engine-label{font-size:max(10px,8px)}
+.hidden-decks-label{font-size:max(10px,8px)}
+.hidden-deck{font-size:max(10px,10px)}
+.hidden-deck>b{font-size:max(10px,11px)}
+.hidden-state{font-size:max(10px,8px)}
+.show-four{font-size:max(10px,10px)}
+.persistence-warning{font-size:max(10px,12px)}
+.fx-wet{font-size:max(10px,7px)}
+.load-choice{font-size:max(10px,8px)}
+.load-choice select{font-size:max(10px,10px)}
+.load-choice>span{font-size:max(10px,8px)}
+.cue-editor>strong{font-size:max(10px,11px)}
+.cue-editor>div>span{font-size:max(10px,10px)}
+.cue-editor button{font-size:max(10px,10px)}
+.statusbar .footer-info{font-size:max(10px,8px)}
+@media(max-width:1250px){
+.hidden-state{font-size:max(10px,7px)}
+}
+@media(max-width:650px){
+.mobile-engine-notice{font-size:max(10px,7px)}
+.refined .wordmark{font-size:max(10px,17px)}
+.layout-choice{font-size:max(10px,6px)}
+.layout-picker{font-size:max(10px,11px)}
+.refined .mode-nav .mode{font-size:max(10px,11px)}
+.hidden-decks-label{font-size:max(10px,7px)}
+.hidden-deck{font-size:max(10px,9px)}
+.hidden-state{font-size:max(10px,7px)}
+.hidden-deck>b{font-size:max(10px,10px)}
+.show-four{font-size:max(10px,10px)}
+.load-choice{font-size:max(10px,8px)}
+.load-choice>span{font-size:max(10px,8px)}
+.refined .mixer-dialog .channel-title{font-size:max(10px,10px)}
+.refined .mixer-dialog .effect-name{font-size:max(10px,9px)}
+.cue-editor>strong{font-size:max(10px,10px)}
+.cue-editor>div>span{font-size:max(10px,9px)}
+.persistence-warning{font-size:max(10px,11px)}
+.statusbar .footer-info{font-size:max(10px,7px)}
+}
+body.refined section.deck.face{font-size:max(10px,9px)}
+@container deck (max-width:560px){
+.pads .pad strong,.pads .pad-slot{font-size:max(10px,13px)}
+}
+@container deck (max-width:470px){
+.track-title{font-size:max(10px,16px)}
+.deck-letter{font-size:max(10px,30px)}
+}
+@container deck (max-width:400px){
+.track-title{font-size:max(10px,14px)}
+.track-artist{font-size:max(10px,11px)}
+.deck-letter{font-size:max(10px,26px)}
+}
+.native-desktop .native-audio-bar{font-size:max(10px,10px)}
+.native-desktop .precision-ruler{font-size:max(10px,9px)}
+.native-desktop .linear-phrase{font-size:max(10px,9px)}
+.library-feedback{font-size:max(10px,11px)}
+.canvas-widget>.widget-content{font-size:max(10px,12px)}
+.canvas-widget .widget-content .track-title,.preview-component.canvas-widget .track-title{font-size:max(10px,13px)!important}
+.canvas-entry{font-size:max(10px,11px)}
+.canvas-shell button,.creator-dialog button,.canvas-name-dialog button{font-size:max(10px,11px)}
+.canvas-shell input,.canvas-shell select,.creator-dialog input,.creator-dialog select,.creator-dialog textarea,.canvas-name-dialog input{font-size:max(10px,12px)}
+.canvas-shell label,.creator-dialog label,.canvas-name-dialog label{font-size:max(10px,11px)}
+.canvas-eyebrow{font-size:max(10px,9px)}
+.canvas-toolbar h1{font-size:max(10px,21px)}
+.canvas-shell .canvas-check{font-size:max(10px,11px)}
+.component-drawer p,.canvas-note{font-size:max(10px,11px)}
+.component-drawer h3{font-size:max(10px,12px)}
+.component-drawer h3 small{font-size:max(10px,9px)}
+.component-palette button>span{font-size:max(10px,21px)}
+.component-palette strong{font-size:max(10px,11px)}
+.component-palette small{font-size:max(10px,8px)}
+.component-drawer select{font-size:max(10px,11px)}
+.empty-mark{font-size:max(10px,30px)}
+.canvas-empty h2{font-size:max(10px,35px)}
+.canvas-empty p{font-size:max(10px,13px)}
+.canvas-empty>small{font-size:max(10px,10px)}
+.widget-grip>span:last-child{font-size:max(10px,9px)}
+.grip-dots{font-size:max(10px,19px)}
+.widget-content{font-size:max(10px,12px)}
+.canvas-widget .deck-letter{font-size:max(10px,28px)!important}
+.canvas-widget .track-title{font-size:max(10px,13px)!important}
+.canvas-widget .track-artist{font-size:max(10px,10px)!important}
+.canvas-widget .bpm-value{font-size:max(10px,23px)!important}
+.canvas-widget .bpm small{font-size:max(10px,8px)}
+.canvas-widget .wave-flag{font-size:max(10px,7px)}
+.canvas-widget .library-title{font-size:max(10px,12px)!important}
+.canvas-widget .canvas-wave strong,.canvas-widget .canvas-cues strong,.canvas-widget .canvas-cross strong,.canvas-widget .canvas-fx strong{font-size:max(10px,12px)}
+.canvas-widget .canvas-wave small,.canvas-widget .canvas-fx p{font-size:max(10px,10px)}
+.component-inspector h3{font-size:max(10px,18px)}
+.component-inspector small{font-size:max(10px,10px)}
+.component-inspector h4{font-size:max(10px,11px)}
+.inspector-empty>span{font-size:max(10px,30px)}
+.inspector-empty p{font-size:max(10px,12px)}
+.canvas-status{font-size:max(10px,9px)}
+.creator-dialog,.canvas-name-dialog{font-size:max(10px,13px)}
+.creator-heading h2{font-size:max(10px,24px)}
+.creator-dialog p,.creator-dialog li{font-size:max(10px,12px)}
+.creator-dialog .design-file{font-size:max(10px,10px)}
+.creator-dialog textarea{font-size:max(10px,11px)}
+.creator-dialog>small{font-size:max(10px,10px)}
+.preview-caption{font-size:max(10px,9px)!important}
+.canvas-name-dialog h2{font-size:max(10px,20px)}
+@media(max-width:1200px){
+.canvas-empty h2{font-size:max(10px,30px)}
+}
+@media(max-width:800px){
+.canvas-empty h2{font-size:max(10px,28px)}
+}
+@media(max-width:650px){
+.canvas-toolbar h1{font-size:max(10px,20px)}
+}

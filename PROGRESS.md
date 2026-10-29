@@ -1,5 +1,15 @@
 # Progress
 
+## Current: themes and limited customization
+
+Approved from the offline proof in `sketches/008-component-themes/` (five themes: Graphite default, Midnight, Ember, Orchid, Daylight). Implemented: one ten-token theme set in `src/themes.css`; application theme in the UI session with a header picker, applied to all five layouts; per-component theme and a "Theme all" control on the canvas; component/workspace format 2 (no free colors, radius, density or scale) with version 1 designs and saved canvases converted, a one-time notice and a kept backup; minimum component sizes that fit each whole face (no clipping or inner scrolling, enforced on resize, inspector, import, starters and restore); a 10 px minimum text size generated from the cascade (`scripts/min-text.py`); local-file tempo shown as "BPM — analysis pending"; a readable local-library header, whole-row collection picker and tidy toolbar. Waveform palette, Play lime, cue blue and deck identity colors are fixed in every theme. Historical `approved.css` is unchanged; literal colors in the other stylesheets were converted to tokens by a property-aware script.
+
+Verified on the controller host: 83 Node tests (eight new theme regressions), build and bundle syntax, the browser suite (25 layout transitions, 30 responsive cases and 50 theme × layout × width cases), the canvas suite, the Rust and installer suites, all isolated native signal checks and the real Electron/native first, restore and offline phases through a private null sink. One folder-import step timed out once in the Electron lane and passed on two reruns; it is recorded as a transient. No physical output, Omarchy portal or hardware latency was tested here. Deployment to the target is a separate step.
+
+## Approved offline theme proof (history)
+
+`sketches/008-component-themes/` is an offline, synthetic proof of the five themes from one ten-token set, with every component in every theme and a mixed-theme canvas. The appearance was approved and implemented as described above; the proof file is kept unchanged.
+
 ## Current: approved reference deck face applied to every layout
 
 The approved version-3 appearance is now the real deck component in Studio Sync, Studio Grid, Studio Linear, Signal One, Signal Wide and the custom canvas. It changes presentation only: the shared four-deck session, native bridge, persistence and layout switching are unchanged, and C/D remain preserved in two-deck views.

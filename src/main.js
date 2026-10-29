@@ -17,17 +17,19 @@ const options=Object.fromEntries(LAYOUTS.map(layout=>[layout.id,createViewOption
 const $=(selector,parent=root)=>[...parent.querySelectorAll(selector)].find(el=>!el.closest('.design-preview'));
 const $$=(selector,parent=root)=>[...parent.querySelectorAll(selector)].filter(el=>!el.closest('.design-preview'));
 let toastTimer;
-function toast(message) {
+function toast(message,ms=2800) {
   clearTimeout(toastTimer);const target=$('.toast');target.textContent=message;
-  toastTimer=setTimeout(()=>{const current=$('.toast');if(current)current.textContent='';},2800);
+  toastTimer=setTimeout(()=>{const current=$('.toast');if(current)current.textContent='';},ms);
 }
 function update() {
   const state=store.get(),ui=options[state.layout],layout=LAYOUTS.find(l=>l.id===state.layout);
   const custom=store.getWorkspace().active;
   document.body.className=(custom?'studio refined canvas-mode':layout.classes)+' engine-off'+(state.mode==='prepare'?' prepare-mode':'')+(!ui.grid?' no-grid':'')+(ui.detail?' wave-detail':'');
+  document.body.dataset.theme=state.theme;
   root.dataset.layout=custom?'canvas':state.layout;
   document.title='Deck Craft — '+(custom?'Custom canvas':layout.name);
   $$('.layout-picker').forEach(select=>{select.value=custom?'canvas':state.layout;});
+  $$('.theme-picker').forEach(select=>{select.value=state.theme;});
   $$('.mode').forEach(button=>button.classList.toggle('active',button.dataset.value===state.mode));
   const persistenceWarning=[store.getWarning(),nativeAudio?.warning].filter(Boolean).join(' ');
   const warning=$('.persistence-warning');warning.hidden=!persistenceWarning;warning.textContent=persistenceWarning;root.dataset.saved=persistenceWarning?'false':'true';
@@ -151,6 +153,7 @@ root.addEventListener('change',event=>{
     if(value==='canvas')store.dispatchWorkspace({type:'active',value:true});
     else {if(store.getWorkspace().active)store.dispatchWorkspace({type:'active',value:false});dispatch({type:'layout',value});}
   }
+  if(input.dataset.action==='theme')store.dispatch({type:'theme',value:input.value});
   if(input.dataset.action==='load-target')dispatch({type:'library',field:'target',value:input.value});
 });
 root.addEventListener('contextmenu',event=>{
@@ -165,4 +168,5 @@ nativeAudio=nativeBridge?new NativeSession(nativeBridge,store,{redraw:mount,say:
 if(nativeAudio){libraryUI=new LibraryController(nativeBridge,store,nativeAudio,{redraw:mount,say:toast,root});nativeAudio.libraryUI=libraryUI;}
 if(nativeAudio)nativeAudio.warning=nativeWarning;
 mount();
+{const migrated=store.takeNotice();if(migrated)toast(migrated,9000);}
 await nativeAudio?.initialize();

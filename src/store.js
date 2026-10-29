@@ -1,5 +1,5 @@
 import { createSession, reduceSession, restoreSession, serializeSession } from './session.js';
-import { createWorkspace, restoreWorkspace, reduceWorkspace } from './workspace.js';
+import { createWorkspace, restoreWorkspaceWithNotice, reduceWorkspace } from './workspace.js';
 export const STORAGE_KEY='deck-craft.ui.v1';
 export const WORKSPACE_KEY='deck-craft.workspace.v1';
 const UNSAVED='Changes are not saved on this device. Your current session remains open; allow browser storage to remember it.';
@@ -7,19 +7,25 @@ const UNSAVED='Changes are not saved on this device. Your current session remain
 /** Owns all local persistence. Layout renderers never read or write storage. */
 export function createStore(storage) {
   let state=createSession(),warning='',lastPersist=0;const listeners=new Set();
-  let workspace=createWorkspace(),workspaceWarning='';const undo=[],redo=[];
+  let workspace=createWorkspace(),workspaceWarning='',notice='';const undo=[],redo=[];
   try {
     const restored=restoreSession(storage.getItem(STORAGE_KEY));state=restored.state;
     if(restored.recovered) warning='Recovered a readable session from invalid saved data. Transport is paused.';
   }catch{warning=UNSAVED;}
-  try {workspace=restoreWorkspace(storage.getItem(WORKSPACE_KEY));}
+  try {
+    const original=storage.getItem(WORKSPACE_KEY),restored=restoreWorkspaceWithNotice(original);workspace=restored.workspace;
+    if(restored.upgraded){try{storage.setItem(WORKSPACE_KEY+'.v1-backup',original);}catch{}notice='Your saved canvas used the old color options. It now uses themes: each component follows the app theme. Layout and audio are unchanged.';}
+  }
   catch {workspaceWarning='Saved workspace could not be restored. The original saved data is untouched; an empty canvas is available.';}
   function saveWorkspace() {
     try {storage.setItem(WORKSPACE_KEY,JSON.stringify(workspace));workspaceWarning='';}
     catch {workspaceWarning='Workspace changes are not saved on this device. The current canvas remains open; export it before closing.';}
   }
+  if(notice)saveWorkspace();
   return {
     get:()=>state,
+    /** One-time message after an older saved canvas was converted; reading it clears it. */
+    takeNotice(){const message=notice;notice='';return message;},
     getWarning:()=>[warning,workspaceWarning].filter(Boolean).join(' '),
     getWorkspace:()=>workspace,
     getWorkspaceHistory:()=>({undo:undo.length,redo:redo.length}),

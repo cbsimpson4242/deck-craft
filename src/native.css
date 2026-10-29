@@ -16,9 +16,9 @@
   min-width: 0;
 }
 .native-audio-bar button {
-  border: 1px solid #4b5a63;
-  background: #222d34;
-  color: #e0e8e6;
+  border: 1px solid color-mix(in srgb,var(--faint) 55%,var(--line));
+  background: var(--raised);
+  color: var(--ink);
   border-radius: 3px;
   padding: 6px 10px;
   white-space: nowrap;
@@ -113,7 +113,7 @@
   border-radius: 3px;
   gap: 6px;
 }
-.library-imports button:first-child { border-color: #55796b; color: #bfdfcd; }
+.library-imports button:first-child { border-color: color-mix(in srgb,var(--faint) 55%,var(--line)); color: var(--accent); }
 .library-feedback { padding: 8px 12px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .native-desktop .local-library .load-choice { display: flex; flex-wrap: wrap; height: auto; gap: 8px; padding: 8px 12px; }
 .native-desktop .local-library .table-wrap { overflow: auto; min-height: 130px; max-height: 460px; }
@@ -154,3 +154,11 @@
     max-width: 70%;
   }
 }
+
+/* Readable local library: whole-row collection picker, no orphaned toolbar button, a header that fits. */
+.local-library .library-toolbar .library-title { flex: 1 1 100%; }
+.local-library .library-toolbar .searchbox { flex: 1 1 140px; min-width: 0; }
+.local-library .library-toolbar .view-toggle { flex: 0 0 auto; }
+.library-navigation label:first-child { flex: 1 1 100%; }
+.library-navigation label:first-child select { flex: 1; min-width: 0; }
+body.refined .library.local-library th:first-child, body.refined.native-desktop .library.local-library th:first-child { width: 58px; }

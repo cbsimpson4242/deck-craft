@@ -1,6 +1,6 @@
 import { createSession } from './session.js';
-import { createComponent, parseDesign, creatorKit, DESIGN_LIMIT } from './workspace.js';
-import { renderCanvasContent, canvasStyle } from './canvas-view.js';
+import { createComponent, parseDesignWithNotice, creatorKit, minSize, DESIGN_LIMIT } from './workspace.js';
+import { renderCanvasContent, themeAttribute } from './canvas-view.js';
 import { escapeHTML } from './components.js';
 
 export const CANVAS_UNAVAILABLE='[data-field="sync"],[data-field="headphone"],[data-field="loopEnabled"],[data-field="pitch"],[data-action="loop-size"],[data-action="toggle-fx"],[data-action="fx-wet"],[data-field="gain"],[data-field="hi"],[data-field="mid"],[data-field="low"],[data-field="filter"]';
@@ -8,7 +8,7 @@ export function renderDesignPreview(design,variant='paused') {
  const fixture=createSession();
  for(const d of Object.values(fixture.decks)){d.playing=variant==='playing';if(variant==='empty'){d.position=0;d.cues=[0,0,0,0];}}
  const designs=design.format==='deckcraft.workspace'?design.items.map(item=>item.design):[design];
- return `<p class="preview-caption">SYNTHETIC ${escapeHTML(variant.toUpperCase())} FIXTURE · NOT AUDIO</p>`+designs.map(d=>`<div class="preview-component canvas-widget" data-kind="${d.kind}" data-density="${d.style.density}" data-waveform="${d.parts.waveform}" data-cues="${d.parts.cues}" data-artwork="${d.parts.artwork}" style="${canvasStyle(d)}"><h3>${escapeHTML(d.name)}</h3>${variant==='empty'?'<p>No track loaded · synthetic empty state</p>':variant==='unavailable'?'<p>Engine unavailable · controls disabled</p>':renderCanvasContent(d,fixture,{preview:true}).replace(/ data-[a-z0-9-]+="[^"]*"/g,'')}</div>`).join('');
+ return `<p class="preview-caption">SYNTHETIC ${escapeHTML(variant.toUpperCase())} FIXTURE · NOT AUDIO</p>`+designs.map(d=>`<div class="preview-component canvas-widget" data-kind="${d.kind}" data-waveform="${d.parts.waveform}" data-cues="${d.parts.cues}" data-artwork="${d.parts.artwork}"${themeAttribute(d)}><h3>${escapeHTML(d.name)}</h3>${variant==='empty'?'<p>No track loaded · synthetic empty state</p>':variant==='unavailable'?'<p>Engine unavailable · controls disabled</p>':renderCanvasContent(d,fixture,{preview:true}).replace(/ data-[a-z0-9-]+="[^"]*"/g,'')}</div>`).join('');
 }
 export function downloadDesign(name,value) {
  const link=document.createElement('a');link.download=name;link.href='data:application/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(value,null,2));document.body.append(link);link.click();link.remove();
@@ -46,7 +46,7 @@ export class CanvasEditor {
  afterMount() {
   if(this.store.getWorkspace().active){
    for(const control of this.root.querySelectorAll('.canvas-shell '+CANVAS_UNAVAILABLE.split(',').join(',.canvas-shell '))){control.disabled=true;control.title='Not implemented in the native engine';}
-   if(!this.ui.editing)for(const el of this.root.querySelectorAll('.canvas-tools [data-editor]:not([data-editor="edit"]):not([data-editor="perform"]),.canvas-tools input'))el.disabled=true;
+   if(!this.ui.editing)for(const el of this.root.querySelectorAll('.canvas-tools [data-editor]:not([data-editor="edit"]):not([data-editor="perform"]),.canvas-tools input,.canvas-tools select'))el.disabled=true;
    const viewport=this.root.querySelector('.canvas-viewport');if(this.scroll&&viewport){viewport.scrollLeft=this.scroll.left;viewport.scrollTop=this.scroll.top;}
   }
   const dialog=this.root.querySelector('.creator-dialog');
@@ -109,17 +109,18 @@ export class CanvasEditor {
   if(['x','y','width','height'].includes(field))this.act({type:'item',id,patch:{[field]:Number(input.value)}});
   else if(['waveform','cues','artwork'].includes(field))this.act({type:'parts',id,patch:{[field]:input.checked}});
   else if(['name','deck'].includes(field))this.act({type:'design',id,patch:{[field]:input.value}});
-  else this.act({type:'style',id,patch:{[field]:['radius','fontScale'].includes(field)?Number(input.value):input.value}});
+  else if(field==='theme')this.act({type:'theme',id,value:input.value});
+  else if(field==='theme-all'){if(input.value)this.act({type:'theme-all',value:input.value});}
  }
  validate() {
   const dialog=this.root.querySelector('.creator-dialog');this.draft=dialog.querySelector('.design-json').value;
-  try{this.reviewed=parseDesign(this.draft);this.reviewedText=this.draft;this.preview();}
+  try{const parsed=parseDesignWithNotice(this.draft);this.reviewed=parsed.design;this.upgraded=parsed.upgraded;this.reviewedText=this.draft;this.preview();}
   catch(error){this.reviewed=null;dialog.querySelector('.design-result').textContent=error.message;dialog.querySelector('.design-preview').replaceChildren();dialog.querySelector('[data-editor="apply-design"]').disabled=true;}
  }
  preview() {
   const dialog=this.root.querySelector('.creator-dialog');dialog.querySelector('.design-preview').innerHTML=renderDesignPreview(this.reviewed,dialog.querySelector('.preview-state').value);
   for(const control of dialog.querySelectorAll('.design-preview button,.design-preview input,.design-preview select'))control.disabled=true;
-  dialog.querySelector('.design-result').textContent='Valid v1 '+(this.reviewed.format==='deckcraft.workspace'?'workspace. Applying replaces the current canvas only.':'component. Applying adds a new view.');
+  dialog.querySelector('.design-result').textContent='Valid v2 '+(this.reviewed.format==='deckcraft.workspace'?'workspace. Applying replaces the current canvas only.':'component. Applying adds a new view.')+(this.upgraded?' This was a version 1 design: its old color options were replaced by the app theme.':'');
   dialog.querySelector('[data-editor="apply-design"]').disabled=false;
  }
  coordinate(value,max) {const unit=this.store.getWorkspace().snapshot.snap?20:1;return Math.max(0,Math.min(max,Math.round(value/unit)*unit));}
@@ -132,7 +133,8 @@ export class CanvasEditor {
  pointerMove(event) {
   const d=this.drag;if(!d||d.pointer!==event.pointerId)return;
   const dx=event.clientX-d.startX,dy=event.clientY-d.startY;
-  d.patch=d.resize?{width:Math.max(320,this.coordinate(d.item.width+dx,1600)),height:Math.max(160,this.coordinate(d.item.height+dy,1600))}:{x:this.coordinate(d.item.x+dx,2400),y:this.coordinate(d.item.y+dy,4800)};
+  const [minW,minH]=minSize(d.item.design.kind);
+  d.patch=d.resize?{width:Math.max(minW,this.coordinate(d.item.width+dx,1600)),height:Math.max(minH,this.coordinate(d.item.height+dy,1600))}:{x:this.coordinate(d.item.x+dx,2400),y:this.coordinate(d.item.y+dy,4800)};
   for(const [key,value] of Object.entries(d.patch))d.element.style[{x:'left',y:'top'}[key]||key]=value+'px';
  }
  pointerUp(event) {

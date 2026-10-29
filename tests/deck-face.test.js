@@ -86,3 +86,16 @@ test('two- and four-deck faces keep deck identities and one shared model', () =>
     assert.equal((html.match(/data-action="toggle-deck"[^>]*data-field="playing"/g) || []).length, 1, 'one Play control per deck face');
   }
 });
+
+test('a local file without tempo analysis says so instead of showing an empty highlighted box', () => {
+  const local = registerLocalTrack({ id: 'local-33333333-3333-3333-3333-333333333333', title: 'Pending tempo fixture.wav', duration: 90, peaks: [] });
+  const demo = deck('A', createSession(), 'compact');
+  assert.doesNotMatch(demo, /dk-tempo pending/);
+  assert.match(demo, /class="bpm-value">\d+\.\d\d</);
+  const loaded = reduceSession(createSession(), { type: 'load', deck: 'A', trackId: local.id });
+  const html = deck('A', loaded, 'compact');
+  assert.match(html, /class="dk-tempo pending"/);
+  assert.match(html, /class="bpm-value">—</);
+  assert.match(html, />analysis pending</);
+  assert.doesNotMatch(html, /key-value/);
+});

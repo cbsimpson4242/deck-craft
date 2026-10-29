@@ -89,6 +89,10 @@ Choose **Customize** or **Layout → Custom canvas** for an initially empty canv
 
 **AI creator kit** exports a design starter, exact versioned schemas, examples, capability reference and standalone validator for any external agent. Paste/open the generated JSON, validate and preview it, then explicitly apply it. This first stage styles existing controls only: no executable plugins or new audio behavior. Effects remain disabled placeholders. Removing a component removes its view, never its playing source. See [custom canvas and agent workflow](docs/CUSTOM-CANVAS.md).
 
+### Themes
+
+Five themes share one ten-token set (surfaces, borders, three text tones, interface accent): **Graphite** (default), **Midnight**, **Ember**, **Orchid** and **Daylight**. The application theme applies to all five layouts; on the custom canvas each component can follow it or choose its own. The Play button, cue blue, deck identity colors and the dark waveform glass do not change with a theme (Daylight uses darker shades of the same deck hues for legibility). No text renders below 10 px. Free color, radius, scale and density controls no longer exist; version 1 designs and canvases still open and convert to themes. Contrast minimums are enforced by tests.
+
 ### The deck face
 
 Every deck in all five layouts and the custom canvas uses one compact face: track information and clocks, a scrolling detail waveform with a fixed playhead and cue flags, a full-track overview with played-region shading, a vertical tempo slider, the transport/loop row, an eight-position cue bank and a cue-editing strip. Slots 5–8 are reserved and disabled because the app stores four manual cues. Real controls: Play, Cue, four manual cues, seek, loop-length preset values and the existing UI flags. **CUP, FLX, REV, SYNC/master behavior, loop IN/OUT/looping, tempo processing, cue-type editing and controller mapping are visibly disabled or UI-state only.**

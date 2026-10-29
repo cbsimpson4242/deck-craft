@@ -12,12 +12,12 @@ test('canvas edits have their own persistence and never mutate the shared sessio
  store.dispatchWorkspace({type:'add',kind:'deck',deck:'C'});
  const item=store.getWorkspace().snapshot.items[0];
  store.dispatchWorkspace({type:'item',id:item.id,patch:{x:80,y:120,width:560}});
- store.dispatchWorkspace({type:'style',id:item.id,patch:{accent:'#ff9900'}});
+ store.dispatchWorkspace({type:'theme',id:item.id,value:'ember'});
  store.dispatchWorkspace({type:'remove',id:item.id});
  assert.deepEqual(store.get(),session);
  assert.equal(storage.getItem(STORAGE_KEY),null,'editing layout must not save or alter musical state');
  store.dispatchWorkspace({type:'undo'});
- assert.equal(store.getWorkspace().snapshot.items[0].design.style.accent,'#ff9900');
+ assert.equal(store.getWorkspace().snapshot.items[0].design.theme,'ember');
  const restored=createStore(storage);
  assert.deepEqual(restored.getWorkspace().snapshot,store.getWorkspace().snapshot);
  assert.equal(restored.getWorkspace().active,true);
@@ -30,8 +30,8 @@ test('templates and saved presets are reusable independent designs; undo/redo is
  const id=store.getWorkspace().snapshot.items[0].id;
  store.dispatchWorkspace({type:'save-template',id,name:'Copper deck'});
  store.dispatchWorkspace({type:'add-template',index:0,deck:'B'});
- store.dispatchWorkspace({type:'style',id,patch:{accent:'#123456'}});
- assert.notEqual(store.getWorkspace().snapshot.items[1].design.style.accent,'#123456');
+ store.dispatchWorkspace({type:'theme',id,value:'orchid'});
+ assert.notEqual(store.getWorkspace().snapshot.items[1].design.theme,'orchid');
  store.dispatchWorkspace({type:'save-preset',name:'My setup'});
  store.dispatchWorkspace({type:'clear'});
  assert.equal(store.getWorkspace().snapshot.items.length,0);
@@ -49,7 +49,7 @@ test('invalid designs are rejected atomically and failures remain visible across
  assert.equal(typeof store.dispatchWorkspace,'function');
  store.dispatchWorkspace({type:'add',kind:'browser'});
  const before=structuredClone(store.getWorkspace());
- assert.throws(()=>store.dispatchWorkspace({type:'style',id:before.snapshot.items[0].id,patch:{surface:'url(https://example.invalid)'}}),/surface/);
+ assert.throws(()=>store.dispatchWorkspace({type:'theme',id:before.snapshot.items[0].id,value:'url(https://example.invalid)'}),/theme/);
  assert.deepEqual(store.getWorkspace(),before);
  storage.setItem=()=>{throw Error('Quota');};
  store.dispatchWorkspace({type:'clear'});
@@ -68,7 +68,7 @@ test('one positioned palette drop is one save and one undo; history and capaciti
  store.dispatchWorkspace({type:'undo'});assert.equal(store.getWorkspace().snapshot.items.length,0);
  store.dispatchWorkspace({type:'redo'});
  const id=store.getWorkspace().snapshot.items[0].id;
- for(let i=0;i<60;i++)store.dispatchWorkspace({type:'style',id,patch:{radius:i%25}});
+ for(let i=0;i<60;i++)store.dispatchWorkspace({type:'theme',id,value:['ember','orchid','app','midnight'][i%4]});
  assert.equal(store.getWorkspaceHistory().undo,40);
  for(let i=1;i<24;i++)store.dispatchWorkspace({type:'add',kind:'crossfader'});
  const before=JSON.stringify(store.getWorkspace());

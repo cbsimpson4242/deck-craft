@@ -16,7 +16,7 @@ try {
   if((await stat(input)).size>DESIGN_LIMIT)throw Error('Design exceeds 256 KiB');
   const design=parseDesign(await readFile(input,'utf8'));
   if(command==='preview') {
-   const css=(await Promise.all(['approved.css','app.css','native.css','canvas.css'].map(name=>readFile(new URL('../src/'+name,import.meta.url),'utf8')))).join('\n');
+   const css=(await Promise.all(['approved.css','app.css','native.css','canvas.css','themes.css'].map(name=>readFile(new URL('../src/'+name,import.meta.url),'utf8')))).join('\n');
    const content=renderDesignPreview(design).replace(/<(button|input|select)\b/g,'<$1 disabled').replace(/data-action="[^"]*"/g,'');
    const html=`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><title>DeckCraft synthetic component preview</title><style>${css}</style><body class="studio refined canvas-mode"><main class="canvas-shell">${content}</main></body></html>`;
    await writeFile(output,html,{flag:'wx'});

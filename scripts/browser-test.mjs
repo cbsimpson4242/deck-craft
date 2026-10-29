@@ -123,6 +123,35 @@ try {
   }
  }
  report.checks.push('30 responsive layout cases: Performance palette, contained transport/clocks/cues, collection load actions and four-channel mixer dialog');
+ {
+  const accents={graphite:'#d2fa69',midnight:'#5cc8ff',ember:'#ffb04a',orchid:'#c79bff',daylight:'#3f7a00'};
+  await client.call('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
+  await select('.layout-picker','studio-sync');
+  const before=musical(await snapshot());
+  let themed=0;
+  for(const [width,height] of [[1440,900],[390,844]]){
+   await client.call('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});
+   for(const layout of LAYOUTS){
+    await select('.layout-picker',layout.id);
+    for(const [theme,accent] of Object.entries(accents)){
+     await select('.theme-picker',theme);
+     const probe=await evaluate(`(()=>{const body=document.body,pick=document.querySelector('.theme-picker').getBoundingClientRect(),bar=document.querySelector('.appbar').getBoundingClientRect();return {theme:body.dataset.theme,accent:getComputedStyle(body).getPropertyValue('--accent').trim(),overflow:document.documentElement.scrollWidth>innerWidth,pickInside:pick.left>=0&&pick.right<=innerWidth&&pick.top>=bar.top-1&&pick.bottom<=bar.bottom+1,picker:document.querySelector('.theme-picker').value,wave:getComputedStyle(document.querySelector('.wavebox')).backgroundColor}})()`);
+     assert.equal(probe.theme,theme);assert.equal(probe.accent,accent,layout.id+' '+theme+' accent token');assert.equal(probe.picker,theme);
+     assert.equal(probe.overflow,false,layout.id+' '+theme+' at '+width+' overflowed horizontally');assert.equal(probe.pickInside,true,layout.id+' '+theme+' theme picker clipped at '+width);
+     assert.equal(probe.wave,'rgb(12, 13, 14)',theme+' waveform glass must stay dark');
+     themed++;
+    }
+   }
+  }
+  assert.deepEqual(musical(await snapshot()),before,'theme and layout changes alter no musical state');
+  await select('.theme-picker','ember');
+  await client.call('Page.reload');await until(()=>evaluate("Boolean(document.querySelector('.layout-picker'))"),'theme restore');
+  assert.equal(await evaluate("document.body.dataset.theme"),'ember');assert.equal(await evaluate("document.querySelector('.theme-picker').value"),'ember');
+  await select('.theme-picker','graphite');
+  await client.call('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
+  report.themeCases=themed;
+  report.checks.push(themed+' theme x layout x width cases: themed tokens, dark waveform glass, no overflow or clipped picker, no musical change, theme restores after reload');
+ }
  await select('.layout-picker','studio-grid');
  await input('.search','<img src=x onerror=alert(1)>');await select('.layout-picker','studio-sync');assert.equal(await evaluate("document.querySelector('.empty').hidden"),false);assert.equal(await evaluate("document.querySelectorAll('img').length"),0);
  await click('[data-action="clear-search"]');

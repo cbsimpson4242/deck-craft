@@ -1,9 +1,10 @@
-import { DEFAULT_LAYOUT, DECK_IDS, LAYOUTS, TRACKS, trackById } from './catalog.js';
+import { DEFAULT_LAYOUT, DEFAULT_THEME, DECK_IDS, LAYOUTS, THEMES, TRACKS, trackById } from './catalog.js';
 
 const LIMITS = {pitch:[-8,8],gain:[0,100],hi:[0,100],mid:[0,100],low:[0,100],filter:[0,100],level:[0,100]};
 const FLAGS = ['playing','sync','headphone','loopEnabled'];
 const LOOP_LENGTHS = [1,2,4,8,16,32];
 const validLayout = id => LAYOUTS.some(layout => layout.id === id);
+const validTheme = id => THEMES.some(theme => theme.id === id);
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const clamp = (value,min,max) => Math.max(min,Math.min(max,value));
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -13,7 +14,7 @@ function initialDeck(track) {
   return {trackId:track.id,position:92.4,playing:false,cues:[0,48,136,208],loopLength:8,loopEnabled:false,pitch:0,sync:false,headphone:false,gain:50,hi:50,mid:50,low:50,filter:50,level:78};
 }
 export function createSession() {
-  return {version:1,layout:DEFAULT_LAYOUT,decks:Object.fromEntries(DECK_IDS.map((id,i)=>[id,initialDeck(TRACKS[i])])),mixer:{crossfader:50,effects:{echo:{enabled:false,wet:25},space:{enabled:false,wet:20}}},library:{query:'',crate:'all',target:'A',dense:false,sort:'title'},mode:'perform',pair:'ab'};
+  return {version:1,layout:DEFAULT_LAYOUT,theme:DEFAULT_THEME,decks:Object.fromEntries(DECK_IDS.map((id,i)=>[id,initialDeck(TRACKS[i])])),mixer:{crossfader:50,effects:{echo:{enabled:false,wet:25},space:{enabled:false,wet:20}}},library:{query:'',crate:'all',target:'A',dense:false,sort:'title'},mode:'perform',pair:'ab'};
 }
 
 /** One semantic session. A layout transition changes presentation only. */
@@ -35,6 +36,7 @@ export function reduceSession(state,action) {
     return changed||mixer!==state.mixer?{...state,decks,mixer}:state;
   }
   if (action.type === 'layout') return validLayout(action.value) && action.value !== state.layout ? {...state,layout:action.value} : state;
+  if (action.type === 'theme') return validTheme(action.value) && action.value !== state.theme ? {...state,theme:action.value} : state;
   if (action.type === 'mode') return ['perform','prepare'].includes(action.value) ? {...state,mode:action.value} : state;
   if (action.type === 'pair') return ['ab','cd'].includes(action.value) ? {...state,pair:action.value} : state;
   if (action.type === 'library') {
@@ -81,6 +83,7 @@ export function restoreSession(text) {
   let recovered=false;
   const state={...initial};
   if(validLayout(saved.layout)) state.layout=saved.layout; else recovered=true;
+  if(validTheme(saved.theme)) state.theme=saved.theme;
   if(['perform','prepare'].includes(saved.mode)) state.mode=saved.mode;
   if(['ab','cd'].includes(saved.pair)) state.pair=saved.pair;
   for(const id of DECK_IDS) {

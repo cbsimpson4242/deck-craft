@@ -12,11 +12,11 @@ import { NativeSession } from '../src/native.js';
 
 test('all kinds round-trip; strict unknown fields, markup, URLs, bounds and versions fail closed',()=>{
  for(const kind of COMPONENT_KINDS)assert.deepEqual(parseDesign(JSON.stringify(createComponent(kind))),createComponent(kind));
- for(const [field,value] of [['version',2],['kind','processor'],['script','alert(1)'],['path','private-track.wav']]){
+ for(const [field,value] of [['version',3],['kind','processor'],['style',{accent:'#ffffff'}],['script','alert(1)'],['path','private-track.wav']]){
   const valueWithBadField={...createComponent(),[field]:value};assert.throws(()=>validateComponent(valueWithBadField));
  }
- for(const [field,value] of [['surface','url(https://example.invalid)'],['accent','red;display:none'],['radius',100],['fontScale',0],['density','invisible']]){
-  const component=createComponent();component.style[field]=value;assert.throws(()=>validateComponent(component));
+ for(const value of ['url(https://example.invalid)','red;display:none','#ff0000','Graphite','neon','']){
+  const component=createComponent();component.theme=value;assert.throws(()=>validateComponent(component),/theme/);
  }
  assert.throws(()=>parseDesign(' '.repeat(262145)),/256 KiB/);
  assert.throws(()=>parseDesign('{bad'),/JSON/);
@@ -28,10 +28,10 @@ test('all five starter canvases use valid designs and no musical session fields'
  const starter=workspaceStarter('signal-one');starter.items.push(structuredClone(starter.items[0]));assert.throws(()=>validateWorkspace(starter),/duplicate/);
 });
 
-test('component accents reach waveform rendering without rewriting track metadata',()=>{
+test('a component theme never reaches waveform rendering or track metadata',()=>{
  const local=registerLocalTrack({id:'local-11111111-1111-1111-1111-111111111111',title:'Literal #b5d98a fixture.wav',duration:30,peaks:[]});
- const state=reduceSession(createSession(),{type:'load',deck:'A',trackId:local.id}),design=createComponent();design.style.accent='#cc9966';
- const markup=renderCanvasContent(design,state);assert.match(markup,/stop-color="#cc9966"/);assert.ok(markup.includes(local.title));
+ const state=reduceSession(createSession(),{type:'load',deck:'A',trackId:local.id}),design=createComponent();design.theme='ember';
+ const markup=renderCanvasContent(design,state);assert.ok(!markup.includes('ember'));assert.ok(!/--widget-/.test(markup));assert.ok(markup.includes(local.title));
 });
 
 test('creator deck previews cannot enter native transport painting',()=>{
@@ -62,8 +62,8 @@ test('offline exported agent validator executes and agrees with app validation',
   for(const [name,content] of Object.entries(kit.files))await writeFile(path.join(folder,name),content);
   const run=()=>spawnSync(process.execPath,['validate.mjs','component.json'],{cwd:folder,encoding:'utf8'});
   const accepted=run();assert.equal(accepted.status,0,accepted.stderr);assert.equal(JSON.parse(accepted.stdout).ok,true);
-  const invalid=createComponent();invalid.style.radius=-1;await writeFile(path.join(folder,'component.json'),JSON.stringify(invalid));
-  const rejected=run();assert.equal(rejected.status,1);assert.match(rejected.stderr,/radius/);
-  const text=JSON.stringify(kit);assert.ok(!text.includes('trackId'));assert.ok(!text.includes('peaks'));assert.match(kit.files['AGENTS.md'],/Styling only/);
+  const invalid=createComponent();invalid.theme='neon';await writeFile(path.join(folder,'component.json'),JSON.stringify(invalid));
+  const rejected=run();assert.equal(rejected.status,1);assert.match(rejected.stderr,/theme/);
+  const text=JSON.stringify(kit);assert.ok(!text.includes('trackId'));assert.ok(!text.includes('peaks'));assert.match(kit.files['AGENTS.md'],/Presentation only/);assert.match(kit.files['AGENTS.md'],/Colors, corner radius, type scale and density are not configurable/);
  } finally {await rm(folder,{recursive:true,force:true});}
 });

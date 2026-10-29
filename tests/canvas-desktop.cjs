@@ -4,7 +4,7 @@ const fs=require('node:fs/promises');
 const path=require('node:path');
 module.exports=async function({js,command,until,checks,start,idA,dir,window}) {
  await js("document.querySelector('.canvas-entry').click();document.querySelector('[data-editor=add][data-kind=deck]').click()");
- await js("{const x=document.querySelector('[data-editor-field=accent]');x.value='#cc9966';x.dispatchEvent(new Event('change',{bubbles:true}));}");
+ await js("{const x=document.querySelector('[data-editor-field=theme]');x.value='orchid';x.dispatchEvent(new Event('change',{bubbles:true}));}");
  await js("document.querySelector('[data-editor=remove]').click()");
  let snapshot=(await command({type:'status'})).snapshot;
  assert.equal(snapshot.engineId,start.engineId);assert.equal(snapshot.decks[0].trackId,idA);assert.equal(snapshot.decks[0].loadGeneration,start.decks[0].loadGeneration);assert.equal(snapshot.decks[0].playing,true);

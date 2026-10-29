@@ -37,7 +37,10 @@ try {
  await click('[data-editor="add"][data-kind="deck"]');let w=await workspace();assert.equal(w.snapshot.items.length,1);const id=w.snapshot.items[0].id;
  await drag(`[data-item-id="${id}"] .widget-grip`,83,57);w=await workspace();assert.equal(w.snapshot.items[0].x,80);assert.equal(w.snapshot.items[0].y,60);
  await drag(`[data-item-id="${id}"] .widget-resize`,63,43);w=await workspace();assert.equal(w.snapshot.items[0].width,620);assert.equal(w.snapshot.items[0].height,600);
- await change('[data-editor-field="accent"]','#e0a45c');await change('[data-editor-field="name"]','Copper <deck>');await change('[data-editor-field="deck"]','C');
+ await drag(`[data-item-id="${id}"] .widget-resize`,-900,-900);w=await workspace();assert.equal(w.snapshot.items[0].width,520,'resize stops at the smallest size that fits the whole deck');assert.equal(w.snapshot.items[0].height,560);
+ assert.equal(await evaluate("(()=>{const c=document.querySelector('.canvas-widget .widget-content');return c.scrollHeight<=c.clientHeight+1&&c.scrollWidth<=c.clientWidth+1})()"),true,'a deck at its minimum size has no inner scrolling');
+ await drag(`[data-item-id="${id}"] .widget-resize`,100,40);w=await workspace();assert.equal(w.snapshot.items[0].width,620);assert.equal(w.snapshot.items[0].height,600);
+ await change('[data-editor-field="theme"]','ember');assert.equal(await evaluate("document.querySelector('.canvas-widget').dataset.theme"),'ember');await change('[data-editor-field="name"]','Copper <deck>');await change('[data-editor-field="deck"]','C');
  assert.equal(await evaluate("document.querySelector('.canvas-widget .widget-grip strong').textContent"),'Copper <deck>');assert.equal(await evaluate("document.querySelectorAll('deck').length"),0);
  await click('[data-editor="save-template"]');await saveName('Copper template');assert.equal((await workspace()).templates.length,1);
  await click('[data-editor="add-template"]');assert.equal((await workspace()).snapshot.items.length,2);
@@ -50,13 +53,14 @@ try {
  await click('[data-editor="edit"]');assert.deepEqual(await musical(),expected);
  checks.push('saved workspace, blank reset/recovery and locked Perform mode do not change musical state');
  await click('[data-editor="creator"]');assert.equal(await evaluate("document.querySelector('.creator-dialog').open"),true);
- const component=createComponent('deck','D');component.name='Agent copper deck';component.style.accent='#d39c64';
+ const component=createComponent('deck','D');component.name='Agent copper deck';component.theme='orchid';
  await jsonInput({...component,script:'alert(1)'});await click('[data-editor="validate"]');assert.match(await evaluate("document.querySelector('.design-result').textContent"),/unknown field/);assert.equal(await evaluate("document.querySelector('[data-editor=\"apply-design\"]').disabled"),true);
+ {const {theme,...rest}=component;await jsonInput({...rest,version:1,style:{accent:'#d39c64',surface:'#18232d',text:'#dce8ef',radius:10,density:'compact',fontScale:110}});await click('[data-editor="validate"]');assert.match(await evaluate("document.querySelector('.design-result').textContent"),/version 1 design.*replaced by the app theme/);assert.equal(await evaluate("document.querySelector('[data-editor=\"apply-design\"]').disabled"),false);}
  const uploadFile=path.join(profile,'upload-component.json');await writeFile(uploadFile,JSON.stringify(component));
  const documentNode=await call('DOM.getDocument');const fileNode=await call('DOM.querySelector',{nodeId:documentNode.root.nodeId,selector:'.design-file'});
  await call('DOM.setFileInputFiles',{nodeId:fileNode.nodeId,files:[uploadFile]});
- await until(()=>evaluate("document.querySelector('.design-result').textContent.startsWith('Valid v1')"),'chosen JSON file validation');
- await jsonInput(component);await click('[data-editor="validate"]');assert.match(await evaluate("document.querySelector('.design-result').textContent"),/Valid v1/);
+ await until(()=>evaluate("document.querySelector('.design-result').textContent.startsWith('Valid v2')"),'chosen JSON file validation');
+ await jsonInput(component);await click('[data-editor="validate"]');assert.match(await evaluate("document.querySelector('.design-result').textContent"),/Valid v2/);
  assert.equal(await evaluate("document.querySelectorAll('.design-preview [data-action],.design-preview [data-wave-deck],.design-preview [data-deck]').length"),0);
  assert.equal(await evaluate("[...document.querySelectorAll('.design-preview button,.design-preview input,.design-preview select')].every(e=>e.disabled)"),true);
  for(const variant of ['playing','empty','unavailable','paused']){await change('.preview-state',variant);assert.match(await evaluate("document.querySelector('.preview-caption').textContent"),new RegExp(variant.toUpperCase()));}

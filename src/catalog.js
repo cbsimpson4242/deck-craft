@@ -6,6 +6,11 @@ export const LAYOUTS = Object.freeze([
   { id: 'studio-sync', name: 'Studio Sync', classes: 'studio refined s-sync', decks: 4 }
 ]);
 export const DECK_IDS = Object.freeze(['A', 'B', 'C', 'D']);
+/** Presentation themes. A theme sets surface/text/accent tokens only; Play, cue blue, deck colors and waveform glass are fixed. */
+export const THEMES = Object.freeze([
+  {id:'graphite',name:'Graphite'},{id:'midnight',name:'Midnight'},{id:'ember',name:'Ember'},{id:'orchid',name:'Orchid'},{id:'daylight',name:'Daylight'}
+]);
+export const DEFAULT_THEME = 'graphite';
 export const DEFAULT_LAYOUT = 'studio-sync';
 export const TRACKS = Object.freeze([
   { id:'afterlight', title:'Afterlight', artist:'Forma District', bpm:124, key:'8A', duration:384, genre:'Deep House', color:'#96c7a8' },
