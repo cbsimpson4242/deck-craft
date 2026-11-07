@@ -1,4 +1,4 @@
-import { DECK_IDS } from './catalog.js';
+import { DECK_IDS, backendActive } from './catalog.js';
 import { header, settingsDialog, dialogs, footer, lane, deck, mixer, library, resetAssetSequence } from './components.js';
 import { renderCanvas, creatorDialog } from './canvas-view.js';
 
@@ -13,6 +13,6 @@ export function renderSession(state,ui,workspace=null,editorUI=null,history={und
   resetAssetSequence();
   const custom=workspace?.active;
   const body=custom?renderCanvas(workspace,editorUI,history,state):stage(state);
-  const alert=globalThis.deckCraftNative?'<div class="native-audio-bar" role="status" hidden><span class="native-audio-state"></span><button data-action="reconnect-audio">Reconnect audio</button></div>':'';
+  const alert=(globalThis.deckCraftNative||backendActive())?'<div class="native-audio-bar" role="status" hidden><span class="native-audio-state"></span><button data-action="reconnect-audio">Reconnect audio</button></div>':'';
   return `<div class="app">${header(state)}<div class="persistence-warning" role="status" hidden></div>${alert}${body}${footer()}</div><div class="toast" role="status" aria-live="polite"></div>${settingsDialog(state)}${dialogs(state)}${creatorDialog()}`;
 }

@@ -166,7 +166,7 @@ export function reduceWorkspace(state,action) {
  if(JSON.stringify(next).length>1048576)throw Error('Workspace storage exceeds 1 MiB');
  return next;
 }
-export const CREATOR_CAPABILITIES={version:1,engineDecks:DECK_IDS,componentKinds:COMPONENT_KINDS,native:['local-file import','play','pause','seek','manual cues','channel volume','A/B crossfader','channel gain','3-band EQ','sweep filter'],unavailable:['FX','loops','sync','pitch/time stretching','meters','headphone routing','beat/key analysis'],boundary:'Presentation only. Removing a view never unloads audio. Browser-only previews have no audio. No scripts, raw CSS/HTML, URLs, filesystem paths or new command bindings.'};
+export const CREATOR_CAPABILITIES={version:1,engineDecks:DECK_IDS,componentKinds:COMPONENT_KINDS,native:['local-file import','play','pause','seek','manual cues','channel volume','A/B crossfader','channel gain','3-band full-kill EQ','sweep filter','channel peak meters','L/THRU/R crossfader assignment','tempo ±8%','pitch lock','explicit tempo master','constant-grid beat-phase sync','offline BPM/beat-grid analysis','embedded JPEG/PNG artwork'],unavailable:['FX','loops','headphone routing','key analysis','variable-tempo grids','downbeat classification'],backends:{browser:'channel volume, A/B crossfader, tempo, pitch lock (where supported), sync and analysis only; no gain, EQ, filter, meters or assignment'},boundary:'Presentation only. Removing a view never unloads audio. Browser-only previews have no audio. No scripts, raw CSS/HTML, URLs, filesystem paths or new command bindings.'};
 export function creatorKit(component=createComponent()) {
  const example=validateComponent(component);
  const schemas={component:COMPONENT_SCHEMA,workspace:WORKSPACE_SCHEMA};

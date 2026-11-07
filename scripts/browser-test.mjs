@@ -31,6 +31,7 @@ async function launch() {
  ws.addEventListener('message',event=>{const message=JSON.parse(String(event.data));if(message.id){const item=pending.get(message.id);if(item){pending.delete(message.id);clearTimeout(item.timer);message.error?item.reject(new Error(message.error.message)):item.resolve(message.result);}}else if(message.method==='Input.dragIntercepted'){dragData=message.params.data;}else if(message.method==='Runtime.exceptionThrown'){report.errors.push(message.params.exceptionDetails.text+' '+(message.params.exceptionDetails.exception?.description||''));}});
  client={ws,call:(method,params={})=>new Promise((resolve,reject)=>{const id=++sequence;const timer=setTimeout(()=>{pending.delete(id);reject(new Error('CDP timeout: '+method));},15000);pending.set(id,{resolve,reject,timer});ws.send(JSON.stringify({id,method,params}));})};
  await client.call('Runtime.enable');await client.call('Page.enable');
+ if(!process.env.DECKCRAFT_BROWSER_AUDIO)await client.call('Page.addScriptToEvaluateOnNewDocument',{source:'delete window.AudioContext;delete window.webkitAudioContext;'});
  await client.call('Page.navigate',{url});
  await until(()=>evaluate("Boolean(document.querySelector('.theme-picker'))"),'application startup');
 }
@@ -54,6 +55,7 @@ const click=async(selector,shift=false)=>evaluate(`(()=>{const e=document.queryS
 const input=async(selector,value)=>evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw new Error('Missing input');e.value=${JSON.stringify(String(value))};e.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);
 const snapshot=()=>evaluate("JSON.parse(localStorage.getItem('deck-craft.ui.v1'))");
 const musical=state=>({decks:state.decks,mixer:state.mixer,library:state.library});
+const browserLane=process.env.DECKCRAFT_BROWSER_AUDIO==='1';
 // A real pointer drag: Chromium reports the drag it would start (with the data our dragstart set); we then deliver it to the target.
 async function realDrag(sourceSelector,targetSelector) {
  const point=selector=>evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});const r=e.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
@@ -78,6 +80,9 @@ try {
  assert.equal(await evaluate("document.querySelector('#app').dataset.layout"),'console');
  assert.equal(await evaluate("document.querySelectorAll('iframe').length"),0);
  assert.equal(await evaluate("document.querySelectorAll('.deck-lane').length+':'+document.querySelectorAll('.deck-panel').length+':'+document.querySelectorAll('.mixer .channel').length"),'4:4:4');
+ const backend=await evaluate("document.body.dataset.audioBackend||''");
+ if(browserLane)assert.equal(backend,'browser','browser-audio lane did not attach the browser backend');
+ else assert.equal(backend,'','UI-only lane must leave the audio backend detached');
  // A real wheel event must zoom the hovered waveform, not seek or scroll the page.
  {
   await client.call('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
@@ -101,8 +106,53 @@ try {
   report.checks.push('real scroll-wheel zoom expands/contracts only the hovered lane waveform without seeking, page scroll or persisted musical changes; overview stays full-track');
  }
  await evaluate("window.__sessionIdentity='same-document';window.__startTime=performance.timeOrigin");
- await click('[data-action="pair"][data-value="cd"]');
- await select('.load-target','C');await click('[data-action="load"][data-track="quiet-motion"]');
+ if(browserLane){
+  await until(()=>evaluate("document.querySelector('.engine-label')?.textContent==='BROWSER AUDIO'&&document.querySelector('.mixer input[data-field=\"level\"]')?.disabled===false"),'browser backend ready');
+  const gate=await evaluate(`(()=>{
+   const nodes=sel=>[...document.querySelectorAll(sel)].filter(el=>!el.closest('.design-preview'));
+   const allOff=sel=>{const list=nodes(sel);return list.length>0&&list.every(el=>el.disabled);};
+   const allOn=sel=>{const list=nodes(sel);return list.length>0&&list.every(el=>!el.disabled);};
+   return {
+    label:document.querySelector('.engine-label')?.textContent||'',
+    note:document.querySelector('.settings-note')?.textContent||'',
+    footer:document.querySelector('.statusbar')?.innerText||'',
+    mixer:document.querySelector('.mixer-dialog>p')?.textContent||'',
+    info:document.querySelector('.info-dialog')?.innerText||'',
+    search:document.querySelector('.search')!==null,
+    eq:allOff('.mixer input[data-field="gain"],.mixer input[data-field="hi"],.mixer input[data-field="mid"],.mixer input[data-field="low"],.mixer input[data-field="filter"]'),
+    kill:allOff('[data-action="eq-kill"]'),
+    assign:allOff('[data-action="assign"]'),
+    level:allOn('.mixer input[data-field="level"]'),
+    cross:allOn('input[data-action="crossfader"]'),
+    fx:allOff('[data-action="toggle-fx"],[data-action="fx-wet"]'),
+    loop:allOff('[data-field="loopEnabled"],[data-action="loop-size"]'),
+    play:allOff('[data-field="playing"]'),
+    demo:[...document.querySelectorAll('tr[data-track-id="quiet-motion"]')].every(row=>row.draggable===false),
+    meter:document.querySelector('.vu[data-vu-deck="A"]')?.getAttribute('aria-label')||''
+   };
+  })()`);
+  assert.equal(gate.label,'BROWSER AUDIO');
+  assert.match(gate.note,/GAIN \/ EQ \/ FILTER \/ METERS DESKTOP-ONLY/);
+  assert.match(gate.footer,/Browser audio/);
+  assert.doesNotMatch(gate.footer,/Native audio|full-kill/);
+  assert.match(gate.mixer,/channel levels and the crossfader only/);
+  assert.match(gate.info,/not the Rust engine/);
+  assert.equal(gate.search,false);
+  assert.equal(gate.eq,true);assert.equal(gate.kill,true);assert.equal(gate.assign,true);
+  assert.equal(gate.level,true);assert.equal(gate.cross,true);
+  assert.equal(gate.fx,true);assert.equal(gate.loop,true);assert.equal(gate.play,true);assert.equal(gate.demo,true);
+  assert.match(gate.meter,/not available in this audio engine/);
+  await select(".theme-picker","daylight");await select(".theme-picker","graphite");
+  const untouched=musical(await snapshot());
+  await evaluate(`(()=>{const e=document.querySelector('.mixer [data-deck="A"][data-field="hi"]');e.value='0';e.dispatchEvent(new Event('input',{bubbles:true}));return true})()`);
+  await evaluate(`document.querySelector('tr[data-track-id="quiet-motion"]').dispatchEvent(new KeyboardEvent('keydown',{key:'c',altKey:true,bubbles:true}))`);
+  await delay(200);
+  assert.deepEqual(musical(await snapshot()),untouched,'a disabled EQ gesture and a demo-row load leave the session unchanged');
+  report.checks.push('browser backend is labelled as browser audio: gain, EQ, filter, kills, assignments, meters, loops and FX stay disabled; levels and the crossfader stay enabled; demo rows do not load');
+ } else {
+  await click('[data-action="pair"][data-value="cd"]');
+ // Rows load by Alt+deck key (the table has no load button or target picker).
+ await evaluate(`document.querySelector('tr[data-track-id="quiet-motion"]').dispatchEvent(new KeyboardEvent('keydown',{key:'c',altKey:true,bubbles:true}))`);
  await input('[data-action="deck-number"][data-deck="C"][data-field="position"]',177.3);
  await click('section.deck-panel[data-deck="C"] [data-action="hot-cue"][data-index="1"]',true);
  await click('section.deck-panel[data-deck="C"] [data-action="toggle-deck"][data-field="playing"]');
@@ -118,8 +168,9 @@ try {
  await click('[data-action="pair"][data-value="ab"]');
  await input('[data-deck="A"][data-field="pitch"]',2.5);
  await input('.search','Orbit');
+ }
  const expected=musical(await snapshot());
- assert.equal(expected.decks.C.cues[1],177.3);assert.equal(expected.decks.C.playing,true);
+ if(!browserLane){assert.equal(expected.decks.C.cues[1],177.3);assert.equal(expected.decks.C.playing,true);}
  const steps=[
   ['perform to library',()=>click('[data-action="mode"][data-value="prepare"]'),()=>evaluate("document.body.classList.contains('prepare-mode')")],
   ['library to perform',()=>click('[data-action="mode"][data-value="perform"]'),()=>evaluate("!document.body.classList.contains('prepare-mode')")],
@@ -136,23 +187,30 @@ try {
   await act();assert.equal(await check(),true,name);
   assert.deepEqual(musical(await snapshot()),expected,name+' changed musical/session state');
   assert.equal(await evaluate("window.__sessionIdentity==='same-document'&&window.__startTime===performance.timeOrigin"),true,name+' reloaded the document');
-  assert.equal(await evaluate("document.querySelector('.search')?.value??JSON.parse(localStorage.getItem('deck-craft.ui.v1')).library.query"),'Orbit',name+' lost the search');
+  const kept=await evaluate("({search:document.querySelector('.search')?.value??null,query:JSON.parse(localStorage.getItem('deck-craft.ui.v1')).library.query})");
+  if(browserLane){assert.equal(kept.search,null,name+' showed a search box');assert.equal(kept.query,'',name+' changed the stored query');}
+  else assert.equal(kept.search??kept.query,'Orbit',name+' lost the search');
   report.presentationTransitions++;
  }
  report.checks.push(report.presentationTransitions+' presentation changes (mode, deck pair, pad bank, build round trip, theme) preserve four decks, cues, loops, mixer, FX, pitch and library; no iframe or document reload');
  await click('[data-action="pair"][data-value="cd"]');await client.call('Page.reload');
  await until(()=>evaluate("document.querySelector('#app')?.dataset.layout==='console'&&Boolean(document.querySelector('.deck-panel'))"),'reload');
+ if(browserLane)await until(()=>evaluate("document.querySelector('.engine-label')?.textContent==='BROWSER AUDIO'"),'browser backend after reload');
  const paused=structuredClone(expected);for(const deck of Object.values(paused.decks))deck.playing=false;
  assert.deepEqual(musical(await snapshot()),expected,'restoration must not silently overwrite storage before a gesture');
  assert.equal(await evaluate("document.querySelector('section.deck-panel[data-deck=\"C\"] .play').getAttribute('aria-pressed')"),'false');
- await click('[data-action="density"]');paused.library.dense=true;assert.deepEqual(musical(await snapshot()),paused);
+ if(!browserLane){await click('[data-action="density"]');paused.library.dense=true;assert.deepEqual(musical(await snapshot()),paused);}
  report.checks.push('reload restores preference and musical settings with UI transport paused');
  await select('.theme-picker','ember');
  await close();await launch();
  assert.equal(await evaluate("document.querySelector('.theme-picker').value"),'ember');
- assert.match(await evaluate("document.querySelector('section.deck-lane[data-deck=\"C\"] .remaining').textContent"),/03:17/);
+ if(browserLane){
+  await until(()=>evaluate("document.querySelector('.engine-label')?.textContent==='BROWSER AUDIO'"),'browser backend after restart');
+  assert.equal(await evaluate("document.body.dataset.audioBackend"),'browser');
+  assert.equal(await evaluate("document.querySelector('.search')"),null);
+ } else assert.match(await evaluate("document.querySelector('section.deck-lane[data-deck=\"C\"] .remaining').textContent"),/03:17/);
  report.checks.push('theme and position survive a complete Chromium process restart');
- await select('.theme-picker','graphite');await input('.search','');
+ await select('.theme-picker','graphite');if(!browserLane)await input('.search','');
  for(const [width,height] of [[1920,1080],[1440,900],[1366,768],[1280,720],[390,844],[360,844]]){
   await client.call('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});
   for(const pair of ['ab','cd']){
@@ -161,20 +219,20 @@ try {
     const panels=[...document.querySelectorAll('.console-row .deck-panel')].filter(p=>p.getClientRects().length);
     const clipped=panels.some(p=>{const d=p.getBoundingClientRect();return [...p.querySelectorAll('.bpm-value,.pad,.transport button,.elapsed,.remaining')].some(el=>{if(!el.getClientRects().length)return false;const r=el.getBoundingClientRect();return r.right>d.right+1||r.left<d.left-1||r.bottom>d.bottom+1});});
     const wrap=document.querySelector('.table-wrap').getBoundingClientRect();
-    const loadRects=[...document.querySelectorAll('tr[data-track-id]:not([hidden]) .load')].map(el=>{const r=el.getBoundingClientRect();return {w:r.width,l:r.left,r:r.right,ok:r.width>=25&&r.left>=wrap.left&&r.right<=wrap.right+1}});const loads=loadRects.every(r=>r.ok);window.__loadDebug=JSON.stringify({wrap:[wrap.left,wrap.right],n:loadRects.length,bad:loadRects.filter(r=>!r.ok).slice(0,2)});
+    const loadRects=[...document.querySelectorAll('tr[data-track-id]:not([hidden])')].map(el=>{const r=el.getBoundingClientRect();return {w:r.width,l:r.left,r:r.right,ok:r.width>=25&&r.left>=wrap.left&&r.right<=wrap.right+1}});const loads=loadRects.every(r=>r.ok);window.__loadDebug=JSON.stringify({wrap:[wrap.left,wrap.right],n:loadRects.length,bad:loadRects.filter(r=>!r.ok).slice(0,2)});
     return {overflow:document.documentElement.scrollWidth>innerWidth,pickerVisible:pick.width>0&&pick.left>=0&&pick.right<=innerWidth,deckCount:panels.length,lanes:[...document.querySelectorAll('.deck-lane')].filter(l=>l.getClientRects().length).length,channels:document.querySelectorAll('.mixer .channel').length,clippedControls:clipped,collectionOverflow:!loads,accent:getComputedStyle(document.body).getPropertyValue('--accent').trim()}})()`);
    assert.equal(geometry.clippedControls,false,pair+' clipped readout/cue bank at '+width);
    assert.equal(geometry.overflow,false,pair+' overflow at '+width);assert.equal(geometry.pickerVisible,true);
    assert.equal(geometry.deckCount,2,pair+' visible deck panels at '+width);
    assert.equal(geometry.lanes,4);assert.equal(geometry.channels,4);
-   assert.equal(geometry.collectionOverflow,false,pair+' collection hides load actions at '+width+' '+await evaluate('window.__loadDebug'));
+   if(browserLane){const reach=await evaluate(`(()=>{const lib=document.querySelector(".local-library");const rows=[...lib.querySelectorAll("tr[data-track-id]")];const box=lib.getBoundingClientRect();return {shown:rows.filter(r=>!r.hidden).length,hiddenDemos:rows.filter(r=>r.hidden&&!r.dataset.trackId.startsWith("local-")).length,emptyShown:lib.querySelector(".empty")?.hidden===false,width:box.width};})()`);assert.equal(reach.hiddenDemos>=12,true,pair+" demo rows missing at "+width);assert.equal(reach.shown,0,pair+" showed playable rows before any import at "+width);assert.equal(reach.emptyShown,true,pair+" empty library was not visible at "+width);assert.ok(reach.width>=(width>=800?200:25),pair+" library collapsed at "+width+" "+reach.width);} else assert.equal(geometry.collectionOverflow,false,pair+" collection hides load actions at "+width+" "+await evaluate("window.__loadDebug"));
    assert.equal(geometry.accent,'#c8f542',pair+' lost the Night treatment');
    await click('.settings-open');await click('.app-mixer');assert.equal(await evaluate("document.querySelector('.mixer-dialog').open"),true);await click('[data-action="close-mixer"]');
    report.responsiveCases.push({width,height,pair,...geometry});
    if(evidence&&(width===1440||width===390)&&pair==='ab'){const image=await client.call('Page.captureScreenshot',{format:'png'});await writeFile(path.join(evidence,'console-'+width+'.png'),Buffer.from(image.data,'base64'));}
   }
  }
- report.checks.push('12 responsive cases: four lanes, contained transport/clocks/cues, four-channel mixer and reachable collection load actions with no page overflow');
+ report.checks.push(browserLane?"12 responsive cases: four lanes, contained transport, four-channel mixer and a visible empty local library, with demo rows hidden and no page overflow":"12 responsive cases: four lanes, contained transport/clocks/cues, four-channel mixer and reachable library rows (drag or Alt+deck loading) with no page overflow");
  {
   const accents={graphite:'#c8f542',ember:'#ff7a3d',daylight:'#4f46e5'};
   await client.call('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
@@ -207,6 +265,18 @@ try {
   report.themeCases=themed;
   report.checks.push(themed+' theme x mode x width cases: themed tokens, dark waveform glass, no overflow or clipped picker, no musical change, theme restores after reload');
  }
+ if(browserLane){
+  await client.call('Emulation.setDeviceMetricsOverride',{width:1440,height:1440,deviceScaleFactor:1,mobile:false});
+  const beforeDrop=musical(await snapshot());
+  await evaluate(DRAG_PROBE);
+  const started=await evaluate("window.__dragProbe.start('glass-transit')");
+  assert.equal(started.prevented,true,'demo rows must not start a drag on the browser backend');
+  assert.deepEqual(started.payload,[]);
+  await evaluate(`document.querySelector('tr[data-track-id="last-platform"]').dispatchEvent(new KeyboardEvent('keydown',{key:'a',altKey:true,bubbles:true}))`);
+  await delay(200);
+  assert.deepEqual(musical(await snapshot()),beforeDrop,'demo drag and Alt+deck load nothing on the browser backend');
+  report.checks.push('browser backend refuses demo drags and Alt+deck loads; only a local file can load');
+ } else {
  {
   await client.call('Emulation.setDeviceMetricsOverride',{width:1440,height:2600,deviceScaleFactor:1,mobile:false});
   await evaluate(DRAG_PROBE);await evaluate("window.__dragIdentity=performance.timeOrigin");
@@ -243,18 +313,25 @@ try {
   const realWave=await realDrag('tr[data-track-id="open-water"] .name-cell','section.deck-lane[data-deck="D"] .wavebox.scroll');
   assert.deepEqual(realWave.hover,['D']);assert.equal((await snapshot()).decks.D.trackId,'open-water');
   await input('section.deck-lane[data-deck="D"] .wave-seek',90);assert.equal((await snapshot()).decks.D.position,90);
-  await select('.load-target','A');await click('[data-action="load"][data-track="last-platform"]');assert.equal((await snapshot()).decks.A.trackId,'last-platform');
+  await evaluate(`document.querySelector('tr[data-track-id="last-platform"]').dispatchEvent(new KeyboardEvent('keydown',{key:'a',altKey:true,bubbles:true}))`);assert.equal((await snapshot()).decks.A.trackId,'last-platform');
   assert.deepEqual(await probe('state'),{hover:[],dragging:0});
   assert.equal(await evaluate("window.__dragIdentity===performance.timeOrigin"),true);
-  report.checks.push(drops+' console drops cover both deck pairs, all four waveform lanes and each embedded waveform; real pointer drags carry only the opaque ID; foreign/altered drops, hover cleanup, seeking and Load arrow checked');
+  report.checks.push(drops+' console drops cover both deck pairs, all four waveform lanes and each embedded waveform; real pointer drags carry only the opaque ID; foreign/altered drops, hover cleanup, seeking and Alt+deck row loading checked');
   await client.call('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
  }
+ }
+ if(browserLane){
+  assert.equal(await evaluate("document.querySelector('.search')"),null);
+  assert.equal(await evaluate("document.querySelector('[data-action=\"clear-search\"]')"),null);
+  assert.equal(await evaluate("document.body.innerHTML.includes('onerror=')"),false);
+ } else {
  await input('.search','<img src=x onerror=alert(1)>');assert.equal(await evaluate("document.querySelector('.empty').hidden"),false);assert.equal(await evaluate("document.querySelectorAll('img').length"),0);
  await click('[data-action="clear-search"]');
+ }
  await evaluate("localStorage.setItem('unrelated-app','preserve');localStorage.setItem('deck-craft.ui.v1','{broken')");
  await client.call('Page.reload');await until(()=>evaluate("Boolean(document.querySelector('.theme-picker'))"),'corruption recovery');
  assert.equal(await evaluate("document.querySelector('#app').dataset.layout"),'console');assert.match(await evaluate("document.querySelector('.persistence-warning').textContent"),/Recovered/);assert.equal(await evaluate("localStorage.getItem('unrelated-app')"),'preserve');
- report.checks.push('HTML-like search is inert and malformed saved state recovers without clearing other apps');
+ report.checks.push(browserLane?'browser library has no search box; malformed saved state recovers without clearing other apps':'HTML-like search is inert and malformed saved state recovers without clearing other apps');
  await client.call('Page.addScriptToEvaluateOnNewDocument',{source:"Storage.prototype.setItem=function(){throw new DOMException('Denied','QuotaExceededError')}"});
  await client.call('Page.reload');await until(()=>evaluate("Boolean(document.querySelector('.theme-picker'))"),'storage refusal');await select('.theme-picker','ember');
  assert.equal(await evaluate("document.body.dataset.theme"),'ember');assert.match(await evaluate("document.querySelector('.persistence-warning').textContent"),/not saved/);

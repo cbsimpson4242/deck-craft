@@ -5,6 +5,10 @@ function validateIPC(request) {
   if (!request || typeof request !== "object" || Array.isArray(request)) throw Error("invalid_command");
   const fields = {
     status: ["type"],
+    analyze: ["type","trackId"],
+    tempo: ["type","deck","rate","pitchLock"],
+    master: ["type","deck"],
+    sync: ["type","deck"],
     library: ["type"],
     pick: ["type", "deck"],
     import: ["type", "kind"],
@@ -32,6 +36,8 @@ function validateIPC(request) {
   }[request.type];
   if (!fields || Object.keys(request).length !== fields.length || Object.keys(request).some((k) => !fields.includes(k)))
     throw Error("invalid_command");
+  if(fields.includes("rate")&&(!Number.isFinite(request.rate)||request.rate<0.92||request.rate>1.08))throw Error("invalid_tempo");
+  if(fields.includes("pitchLock")&&typeof request.pitchLock!=="boolean")throw Error("invalid_pitch_lock");
   if (fields.includes("deck") && !["A", "B", "C", "D"].includes(request.deck)) throw Error("invalid_deck");
   if (fields.includes("id") && (typeof request.id !== "string" || !COLLECTION_ID.test(request.id))) throw Error("invalid_collection");
   if (fields.includes("name") && (typeof request.name !== "string" || !request.name.trim() || request.name.length > 80 || /[\x00-\x1f]/.test(request.name))) throw Error("invalid_collection_name");

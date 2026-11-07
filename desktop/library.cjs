@@ -8,6 +8,8 @@ const LIMIT = 512 * 1024 * 1024;
 const SNAPSHOT_LIMIT = 16 * 1024 * 1024;
 const RECORD_LIMIT = 10000;
 const COLLECTION_ID = /^collection-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+function validGrid(g){return g===null || (g && Object.keys(g).length===3 && Number.isFinite(g.bpm)&&g.bpm>=60&&g.bpm<=200&&Number.isFinite(g.offset)&&g.offset>=0&&g.offset<1.01&&Number.isFinite(g.confidence)&&g.confidence>=0&&g.confidence<=1);}
+function validArtwork(a){return a===null || (typeof a==="string"&&a.length<=22000&&/^data:image\/png;base64,iVBOR[A-Za-z0-9+/]*={0,2}$/.test(a));}
 function validCollections(collections, records) {
   return Array.isArray(collections) && collections.length <= 200 &&
     new Set(collections.map(c => c?.id)).size === collections.length &&
@@ -35,6 +37,7 @@ function snapshotText(records, collections = []) {
       channels: r.channels,
       sampleRate: r.sampleRate,
       ...(r.peaks ? { peaks: r.peaks } : {}),
+      ...(r.analysisVersion===1?{analysisVersion:1,beatGrid:r.beatGrid,artwork:r.artwork}:{}),
     };
     const chunk = (count++ ? "," : "") + JSON.stringify(record);
     bytes += Buffer.byteLength(chunk);
@@ -69,7 +72,8 @@ function publicTrack(r) {
     title: path.basename(r.path),
     artist: "Local audio",
     genre: "Local files",
-    bpm: 0,
+    bpm: r.beatGrid?.bpm||0,
+    beatGrid:r.beatGrid||null,artwork:r.artwork||null,analysisVersion:r.analysisVersion||0,
     key: "—",
     duration: r.duration,
     color: "#96c7a8",
@@ -100,6 +104,7 @@ function validRecord(r) {
     Number.isInteger(r.sampleRate) &&
     r.sampleRate >= 8000 &&
     r.sampleRate <= 384000 &&
+    (r.analysisVersion===undefined || (r.analysisVersion===1 && validGrid(r.beatGrid) && validArtwork(r.artwork))) &&
     (!r.peaks || (Array.isArray(r.peaks) && r.peaks.length === 512 && r.peaks.every((v) => Number.isFinite(v) && v >= 0 && v <= 1)))
   );
 }
@@ -174,6 +179,7 @@ class LocalLibrary {
   commit(id, meta) {
     const r = this.get(id);
     const candidate = { ...r, duration: meta.duration, channels: meta.channels, sampleRate: meta.sampleRate };
+    if (Object.hasOwn(meta,"analysisVersion")){candidate.analysisVersion=meta.analysisVersion;candidate.beatGrid=meta.beatGrid;candidate.artwork=meta.artwork;}
     if (!validRecord(candidate)) throw Error("invalid_audio_metadata");
     this.records.set(id, candidate);
     return publicTrack(candidate);

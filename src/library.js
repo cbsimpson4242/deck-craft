@@ -1,5 +1,5 @@
-import { allTracks, libraryCollections, replaceLocalLibrary, DECK_IDS } from './catalog.js';
-import { escapeHTML, icon, timeLabel } from './components.js';
+import { allTracks, libraryCollections, replaceLocalLibrary, registerLocalTrack, DECK_IDS, browserBackend } from './catalog.js';
+import { escapeHTML, icon, timeLabel, sleeve } from './components.js';
 
 // A table without filter controls must never inherit an inaccessible saved filter.
 // This is a presentation projection, not a session/collection migration.
@@ -12,9 +12,9 @@ export function orderedLibraryTracks(state, { unfiltered = false } = {}) {
   return tracks.sort((a,b)=>group?.kind==='playlist'&&state.library.sort==='order' ? order.get(a.id)-order.get(b.id) : state.library.sort==='duration' ? a.duration-b.duration||a.title.localeCompare(b.title) : a.title.localeCompare(b.title));
 }
 export function nativeLibrary(state) {
-  const rows=allTracks().map(t=>`<tr data-track-id="${t.id}" tabindex="0" draggable="${t.local?'true':'false'}"${t.local?' title="Drag onto a deck or waveform to load it"':''}><td class="library-check">${t.local?`<input type="checkbox" data-action="library-select" data-track="${t.id}" aria-label="Select ${escapeHTML(t.title)}">`:''}</td><td class="name-cell"><div><b>${escapeHTML(t.title)}</b><span>${t.local?'Local audio · analysis pending':'Synthetic demo · no audio'}</span></div></td><td class="bpm-cell">—</td><td class="time-cell">${timeLabel(t.duration)}</td><td class="load-cell"><button class="load" data-action="load" data-track="${t.id}" ${t.local?'':'disabled'} aria-label="Load ${escapeHTML(t.title)} into selected deck">${icon('arrow')}</button><span class="playlist-order"><button data-action="library-move" data-track="${t.id}" data-direction="-1" aria-label="Move ${escapeHTML(t.title)} up">↑</button><button data-action="library-move" data-track="${t.id}" data-direction="1" aria-label="Move ${escapeHTML(t.title)} down">↓</button></span></td></tr>`).join('');
+  const rows=allTracks().map(t=>`<tr data-track-id="${t.id}" tabindex="0" draggable="${t.local?'true':'false'}" aria-selected="false"${t.local?' title="Drag onto a deck or waveform to load it"':''}><td class="library-artwork">${sleeve(t,'thumb')}</td><td class="name-cell"><div><b>${escapeHTML(t.title)}</b><span>${t.local?(t.analysisVersion?(t.bpm?'Local audio · beat grid detected':'Local audio · BPM unavailable'):(browserBackend()?'Local audio · analysis unavailable':'Local audio · analysis pending'))+(t.persisted===false?' · this session only — select again after reload':''):'Synthetic demo · no audio'}</span></div></td><td class="bpm-cell">${t.local&&t.bpm?t.bpm.toFixed(2):'—'}</td><td class="time-cell">${timeLabel(t.duration)}</td><td class="order-cell"><span class="playlist-order"><button data-action="library-move" data-track="${t.id}" data-direction="-1" aria-label="Move ${escapeHTML(t.title)} up">↑</button><button data-action="library-move" data-track="${t.id}" data-direction="1" aria-label="Move ${escapeHTML(t.title)} down">↓</button></span></td></tr>`).join('');
   return `<section class="library local-library ${state.library.dense?'tight-rows':''}"><div class="library-main">
-    <div class="table-wrap"><table><thead><tr><th>Select</th><th>TRACK</th><th>BPM</th><th class="time-cell">TIME</th><th>LOAD / ORDER</th></tr></thead><tbody>${rows}</tbody></table><div class="empty" hidden>No local tracks in the library.</div></div>
+    <div class="table-wrap" title="Select a row and press Alt+A/B/C/D, or drag it onto a deck. Ctrl/⌘-click or Space toggles selection. Loaded tracks stay paused."><table><thead><tr><th>ART</th><th>TRACK</th><th>BPM</th><th class="time-cell">TIME</th><th class="order-heading">ORDER</th></tr></thead><tbody>${rows}</tbody></table><div class="empty" hidden>No local tracks in the library.</div></div>
     <div class="library-feedback" role="status" aria-live="polite"></div>
     <dialog class="collection-dialog"><h2></h2><p></p><label>Name<input class="collection-name" maxlength="80" aria-label="Collection name"></label><div><button data-action="library-save">Save</button><button data-action="library-cancel">Cancel</button></div></dialog>
   </div></section>`;
@@ -49,16 +49,32 @@ export class LibraryController {
     set('[data-action="library-forget"]','disabled',this.busy||!this.selected.size);
     set('.library-selected-count','textContent',`${this.selected.size} selected`);
     set('.library-feedback','textContent',this.message);
-    for(const el of qa('[data-action="library-select"]'))el.checked=this.selected.has(el.dataset.track);
-    const selectAll=q('[data-action="library-select-all"]'),n=[...ids].filter(id=>this.selected.has(id)).length;
-    if(selectAll){selectAll.checked=ids.size>0&&n===ids.size;selectAll.indeterminate=n>0&&n<ids.size;selectAll.disabled=this.busy||!ids.size;}
+    set('[data-action="library-select-visible"]','disabled',this.busy||!ids.size);
+    set('.order-heading','hidden',!picker||group?.kind!=='playlist');
     for(const row of qa('tr[data-track-id]')) {
-      const order=row.querySelector('.playlist-order');if(order)order.hidden=!picker||group?.kind!=='playlist';
+      row.setAttribute('aria-selected',String(this.selected.has(row.dataset.trackId)));row.classList.toggle('selected',this.selected.has(row.dataset.trackId));
+      const order=row.querySelector('.order-cell');if(order)order.hidden=!picker||group?.kind!=='playlist';
       const index=group?.trackIds.indexOf(row.dataset.trackId)??-1;
       for(const button of row.querySelectorAll('[data-action="library-move"]'))button.disabled=this.busy||index<0||(button.dataset.direction==='-1'?index===0:index===group.trackIds.length-1);
     }
     }
-    for(const el of this.root.querySelectorAll('.settings-native [data-action="library-import"]'))el.disabled=this.busy;
+    for(const el of this.root.querySelectorAll('.settings-native [data-action="library-import"],.settings-native [data-action="library-analyze"]'))el.disabled=this.busy;
+  }
+  selectRow(row,event={}) {
+    const id=row.dataset.trackId;if(!id.startsWith('local-'))return;if(!this.selected.has(id)&&this.selected.size>=1000)return;
+    if(event.ctrlKey||event.metaKey||event.key===' '){if(this.selected.has(id))this.selected.delete(id);else this.selected.add(id);}
+    else {this.selected.clear();this.selected.add(id);}
+    this.lastSelected=id;this.paint();
+  }
+  async analyze() {
+    if(this.busy)return;this.busy=true;this.paint();
+    const ids=this.selected.size?[...this.selected]:orderedLibraryTracks(this.store.get()).filter(t=>t.local).map(t=>t.id);
+    let failed=0;
+    try{for(let i=0;i<ids.length;i++){
+      this.message=`Analyzing ${i+1} / ${ids.length}…`;this.paint();
+      try{const result=await this.native.call({type:'analyze',trackId:ids[i]});registerLocalTrack(result.track);}catch{failed++;}
+    }this.message=`Analysis finished: ${ids.length-failed} processed · ${failed} failed. A blank BPM means no reliable constant beat grid was detected.`;
+    }finally{this.busy=false;this.redraw();}
   }
   async run(request) {
     if(this.busy)return;
@@ -68,10 +84,10 @@ export class LibraryController {
       if(request.type==='forget'&&request.trackIds.some(id=>selectedDeckTracks.includes(id)))throw Error('A selected track is still assigned to a deck. Load a different track before removing it from the library.');
       const result=await this.bridge.command(request);
       if(!result.ok)throw Error(result.error==='track_in_use'?'A selected track is loaded in a deck. Load a different track before removing it from the library.':result.error==='library_save_failed'?'Changes could not be saved. The previous collection is unchanged.':String(result.error).replaceAll('_',' '));
-      if(result.cancelled)return;
+      if(result.cancelled){this.message='Selection cancelled — nothing was added.';return;}
       if(request.type==='import') {
         const s=result.summary;
-        this.message=`${s.added} added · ${s.existing} already in library · ${s.failed} failed · ${s.skipped} skipped${s.truncated?' · Batch limit reached; import smaller folders to continue':''}.${s.errors.length?' '+s.errors.map(e=>e.name+': '+e.error.replaceAll('_',' ')).join('; '):''}`;
+        this.message=`${s.added} added · ${s.existing} already in library · ${s.failed} failed · ${s.skipped} skipped${s.sessionOnly?` · ${s.sessionOnly} kept for this session only (select again after reload)`:''}${s.truncated?' · Batch limit reached; import smaller folders to continue':''}.${s.errors.length?' '+s.errors.map(e=>e.name+': '+e.error.replaceAll('_',' ')).join('; '):''}`;
       } else this.message='Library saved. Original music files are untouched.';
       if(Object.hasOwn(result,'warning'))this.native.warning=result.warning;
       if(result.tracks)replaceLocalLibrary(result.tracks,result.collections||[],DECK_IDS.map(id=>this.store.get().decks[id].trackId));
@@ -87,6 +103,9 @@ export class LibraryController {
   }
   handleClick(target) {
     const action=target.dataset.action;
+    if(action==='library-analyze'){this.analyze();return true;}
+    if(action==='library-select-visible'){for(const t of orderedLibraryTracks(this.store.get()).filter(t=>t.local)){if(this.selected.size<1000)this.selected.add(t.id);}this.paint();return true;}
+    if(action==='library-clear-selection'){this.selected.clear();this.paint();return true;}
     if(!['library-import','library-new','library-rename','library-delete','library-forget','library-cancel','library-save','library-add','library-remove','library-move'].includes(action))return false;
     if(this.busy)return true;
     const group=libraryCollections().find(c=>c.id===this.store.get().library.crate);
@@ -122,10 +141,6 @@ export class LibraryController {
       this.store.dispatch({type:'library',field:'sort',value:libraryCollections().find(c=>c.id===input.value)?.kind==='playlist'?'order':'title'});
     } else if(input.dataset.action==='library-sort')this.store.dispatch({type:'library',field:'sort',value:input.value});
     else if(input.dataset.action==='library-destination'){this.destination=input.value;this.paint();}
-    else if(input.dataset.action==='library-select') {if(input.checked&&this.selected.size<1000)this.selected.add(input.dataset.track);else this.selected.delete(input.dataset.track);this.paint();}
-    else if(input.dataset.action==='library-select-all') {
-      for(const track of orderedLibraryTracks(this.store.get()).filter(t=>t.local)) {if(input.checked&&this.selected.size<1000)this.selected.add(track.id);else if(!input.checked)this.selected.delete(track.id);}
-      this.paint();
-    }
+
   }
 }

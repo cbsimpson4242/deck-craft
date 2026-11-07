@@ -96,6 +96,13 @@ async function startDesktop({ userData, enginePath, chooseFile, show = true } = 
     client.on("state", (snapshot) => {
       if (audio === client) notify({ type: "state", snapshot });
     });
+    client.on("analysis",async message=>{
+      if(audio!==client)return;
+      try{const active=client.snapshot.decks.find(d=>d.id===message.deck&&d.trackId===message.trackId);if(!active)return;
+        const track=library.commit(message.trackId,message.metadata);const saved=await library.save();
+        if(audio===client)notify({type:"track",track,warning:saved?"":library.warning});
+      }catch{}
+    });
     client.on("waveform", async (message) => {
       const owner = () => audio === client && !client.closed && client.engineId === message.engineId &&
         client.snapshot.decks.find((d) => d.id === message.deck && d.trackId === message.trackId &&
@@ -149,6 +156,11 @@ async function startDesktop({ userData, enginePath, chooseFile, show = true } = 
       const request = validateIPC(raw);
       let result;
       switch (request.type) {
+        case "analyze": {
+          if(picking||editingLibrary)throw Error("library_busy");
+          const record=library.get(request.trackId);picking=true;
+          try{const metadata=await inspectAudio(binary,record);const track=library.commit(record.id,metadata);const saved=await library.save();result={track,warning:saved?"":library.warning};}finally{picking=false;}break;
+        }
         case "library":
           result = { tracks: library.list(), collections: library.collections, warning: library.warning };
           break;

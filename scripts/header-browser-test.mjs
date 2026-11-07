@@ -43,6 +43,8 @@ async function launch(fixture = '') {
   });
   client = { ws, call: (method, params = {}) => new Promise((resolve, reject) => { const id = ++sequence; const timer = setTimeout(() => { pending.delete(id); reject(new Error('CDP timeout: ' + method)); }, 20000); pending.set(id, { resolve, reject, timer }); ws.send(JSON.stringify({ id, method, params })); }) };
   await client.call('Runtime.enable'); await client.call('Page.enable'); await client.call('Page.bringToFront');
+  // The default regression lane is the UI-only fallback; the in-browser audio backend has its own lane.
+  if (!process.env.DECKCRAFT_BROWSER_AUDIO) await client.call('Page.addScriptToEvaluateOnNewDocument', { source: 'delete window.AudioContext;delete window.webkitAudioContext;' });
   if (fixture) await client.call('Page.addScriptToEvaluateOnNewDocument', { source: fixture });
   await client.call('Page.navigate', { url });
   await until(() => evaluate("Boolean(document.querySelector('.settings-open'))"), 'application startup');
@@ -140,8 +142,7 @@ try {
   await launch();
   await evaluate("window.__identity='same-document'");
   assert.equal(await evaluate("document.querySelectorAll('iframe').length"), 0);
-  await select('.load-target', 'C');
-  await evaluate("document.querySelector('[data-action=\"load\"][data-track=\"quiet-motion\"]').click()");
+  await evaluate("document.querySelector('tr[data-track-id=\"quiet-motion\"]').dispatchEvent(new KeyboardEvent('keydown',{key:'c',altKey:true,bubbles:true}))");
   await evaluate("(()=>{const e=document.querySelector('[data-action=\"deck-number\"][data-deck=\"C\"][data-field=\"position\"]');e.value=177.3;e.dispatchEvent(new Event('input',{bubbles:true}))})()");
   await evaluate("document.querySelector('section[data-deck=\"C\"] [data-action=\"hot-cue\"][data-index=\"1\"]').dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true}))");
   await evaluate("(()=>{const e=document.querySelector('[data-deck=\"D\"][data-field=\"level\"]');e.value=55;e.dispatchEvent(new Event('input',{bubbles:true}))})()");

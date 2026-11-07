@@ -120,7 +120,8 @@ export class TransportPainter {
         if(force||m.last!==key){
           m.last=key;
           m.bars.forEach((bar,i)=>{bar.style.setProperty("--meter",values[i].toFixed(3));bar.dataset.clip=String(peaks[i]>1);});
-          const label=live?"Channel "+id+" peak meter after EQ and fader":"Channel "+id+" meter: silent";
+          const unavailable=!live&&status?.ready===true&&status?.capabilities?.channelMeters!==true;
+          const label=live?"Channel "+id+" peak meter after EQ and fader":"Channel "+id+(unavailable?" meter: not available in this audio engine":" meter: silent");
           if(m.label!==label){m.label=label;m.el.setAttribute("aria-label",label);}
         }
       }

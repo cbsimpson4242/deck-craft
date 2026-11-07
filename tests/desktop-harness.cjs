@@ -44,7 +44,8 @@ async function run() {
     b.write("data", 36);
     b.writeUInt32LE(frames * 4, 40);
     for (let i = 0; i < frames; i++) {
-      const v = Math.round(Math.sin((2 * Math.PI * 440 * i) / rate) * 6000);
+      const t=i/rate,phase=(t-.17)%0.5;const amplitude=6000+(t>=.17&&phase>=0&&phase<.025?10000:0);
+      const v = Math.round(Math.sin((2 * Math.PI * 440 * i) / rate) * amplitude);
       b.writeInt16LE(v, 44 + i * 4);
       b.writeInt16LE(v, 46 + i * 4);
     }
@@ -228,11 +229,12 @@ async function run() {
       "decoded real waveform",
     );
     const detailEvent = await until(() => js(`window.__deckDetail.find(e=>e.trackId===${JSON.stringify(idA)})||null`), "native fine waveform detail forwarded to the renderer");
-    // 30 s generated 440 Hz sine at 6000/32768: 64 bins per second, peak about 47/255, RMS about 33/255.
+    // 30 s generated 440 Hz sine at 6000/32768 with a 25 ms accent (16000 more) every 0.5 s for the BPM analysis:
+    // 64 bins per second; sustained bins peak about 47/255 (RMS about 33/255) and accent bins about 125/255 (RMS up to about 90/255).
     assert.equal(detailEvent.bins, 1920);
     assert.equal(detailEvent.keys, "bins,peak,rms");
-    assert.ok(detailEvent.peakMin >= 44 && detailEvent.peakMax <= 49, JSON.stringify({ ...detailEvent, peak: "" }));
-    assert.ok(detailEvent.rmsMin >= 31 && detailEvent.rmsMax <= 36, JSON.stringify({ ...detailEvent, peak: "" }));
+    assert.ok(detailEvent.peakMin >= 44 && detailEvent.peakMin <= 49 && detailEvent.peakMax >= 118 && detailEvent.peakMax <= 128, JSON.stringify({ ...detailEvent, peak: "" }));
+    assert.ok(detailEvent.rmsMin >= 31 && detailEvent.rmsMin <= 36 && detailEvent.rmsMax >= 60 && detailEvent.rmsMax <= 92, JSON.stringify({ ...detailEvent, peak: "" }));
     await until(async () => (await canvasInk()) > 200, "waveform canvas painted from decoded data");
     assert.ok(!(await fs.readFile(path.join(dir, "user-data/library.json"), "utf8")).includes(detailEvent.peak), "session-only detail is not persisted in the registry");
     assert.ok(!(await js("localStorage.getItem('deck-craft.ui.v1')")).includes(detailEvent.peak), "session-only detail is not persisted in the renderer snapshot");
@@ -283,13 +285,23 @@ async function run() {
       "document.querySelector('[data-action=hot-cue][data-deck=A][data-index=\"1\"]').dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true}))",
     );
     checks.push("UI pause, seek and manual cue storage follow native position");
-    // Table-only UI retains the saved target but no longer exposes its old picker. Seed that
-    // persisted preference and exercise the real row-loading control after renderer restoration.
-    await js("{const s=JSON.parse(localStorage.getItem('deck-craft.ui.v1'));s.library.target='B';localStorage.setItem('deck-craft.ui.v1',JSON.stringify(s));}");
-    window.webContents.reload();
-    await until(ready, "renderer restored before second deck row load");
-    await js(`document.querySelector('tr[data-track-id="${idA}"] .load').click()`);
+    // The table-only library has no load controls: rows load by Alt+deck key, drag or the deck's LOAD chip.
+    await js(
+      `document.querySelector('tr[data-track-id="${idA}"]').dispatchEvent(new KeyboardEvent('keydown',{key:'b',altKey:true,bubbles:true}));`,
+    );
     await until(async () => (await session()).decks.B.trackId === idA, "second deck loads selected local source");
+    await until(async()=>{const s=(await command({type:"status"})).snapshot;return s.decks[0].beatGrid&&s.decks[1].beatGrid;},"real native beat grids on both decks");
+    await js(`{const e=document.querySelector('[data-deck="A"][data-field="pitch"]');e.value=4;e.dispatchEvent(new Event('input',{bubbles:true}));}`);
+    await until(async()=>Math.abs((await command({type:"status"})).snapshot.decks[0].rate-1.04)<1e-6,"UI tempo reaches native rate");
+    await js(`document.querySelector('[data-deck="A"][data-field="pitchLock"]').click()`);
+    await until(async()=>(await command({type:"status"})).snapshot.decks[0].pitchLock===false,"UI pitch lock reaches native engine");
+    await js(`document.querySelector('[data-action="master"][data-deck="A"]').click()`);
+    await until(async()=>(await command({type:"status"})).snapshot.master==="A","UI master acknowledged");
+    await js(`document.querySelector('[data-field="sync"][data-deck="B"]').click()`);
+    await until(async()=>{const d=(await command({type:"status"})).snapshot.decks[1];return d.synced&&Math.abs(d.rate-1.04)<1e-6;},"UI beat sync acknowledged");
+    assert.equal(await js("document.querySelectorAll('.local-library input[type=checkbox],.local-library .load-target,.local-library .load-cell').length"),0);
+    checks.push("Real analyzed BPM, UI tempo, pitch lock, master and sync use native acknowledgments with paused transport");
+
     await js(
       "{const p=document.querySelector('.theme-picker');p.value='daylight';p.dispatchEvent(new Event('change',{bubbles:true}));}",
     );
@@ -306,7 +318,7 @@ async function run() {
     s = await session();
     await fs.writeFile(
       path.join(dir, "expected.json"),
-      JSON.stringify({ trackId: idA, position: s.decks.A.position, cues: s.decks.A.cues, engineId: start.engineId, ...libraryExpected, ...stripExpected }),
+      JSON.stringify({ trackId: idA, position: s.decks.A.position, cues: s.decks.A.cues, engineId: start.engineId, rate: s.decks.A.pitch, pitchLock: s.decks.A.pitchLock, master: s.master, ...libraryExpected, ...stripExpected }),
     );
     const image = await window.webContents.capturePage();
     await fs.writeFile(path.join(dir, "desktop.png"), image.toPNG());
@@ -322,10 +334,11 @@ async function run() {
     assert.deepEqual(s.decks.A.cues, expected.cues);
     assert.notEqual(native.engineId, expected.engineId);
     assert.ok(native.decks.every((d) => !d.playing));
+    assert.ok(Math.abs((native.decks[0].rate-1)*100-expected.rate)<1e-6);assert.equal(native.decks[0].pitchLock,expected.pitchLock);assert.equal(native.master,expected.master);
     assert.equal(s.decks.B.trackId, expected.trackId);
     checks.push("Complete app restart restores theme, local tracks, positions and cues, but never starts playback");
     const restoredDetail=await until(()=>js(`window.__deckDetail?.find(e=>e.trackId===${JSON.stringify(expected.trackId)})||null`),"fresh real native detail on full restart");
-    assert.equal(restoredDetail.bins,1920);assert.ok(restoredDetail.peakMin>=44&&restoredDetail.peakMax<=49);assert.ok(restoredDetail.rmsMin>=31&&restoredDetail.rmsMax<=36);
+    assert.equal(restoredDetail.bins,1920);assert.ok(restoredDetail.peakMin>=44&&restoredDetail.peakMin<=49&&restoredDetail.peakMax>=118&&restoredDetail.peakMax<=128);assert.ok(restoredDetail.rmsMin>=31&&restoredDetail.rmsMin<=36&&restoredDetail.rmsMax>=60&&restoredDetail.rmsMax<=92);
     // The table-only library lane deliberately saved Library mode. Reveal Perform before inspecting
     // a canvas that is correctly not painted while its workspace is hidden.
     await pointerClick('[data-action="mode"][data-value="perform"]');

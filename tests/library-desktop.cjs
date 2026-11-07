@@ -50,10 +50,19 @@ module.exports = async function ({js, command, until, checks, idA, phase, expect
   for(const mode of ["perform","prepare"]) {
     await js(`document.querySelector('[data-action="mode"][data-value="${mode}"]').click()`);
     assert.equal(await js("document.documentElement.scrollWidth<=innerWidth"),true);
-    const table=await js("(()=>{const p=document.querySelector('.local-library'),wrap=p.querySelector('.table-wrap').getBoundingClientRect(),rows=[...p.querySelectorAll('tr[data-track-id]:not([hidden])')],buttons=rows.map(r=>r.querySelector('.load'));return {rows:rows.length,controls:p.querySelectorAll('[data-action=library-view],[data-action=library-import]').length,fit:buttons.length===2&&buttons.every(e=>{const r=e.getBoundingClientRect();return r.width>0&&r.left>=wrap.left&&r.right<=wrap.right+1;})};})()");
-    assert.deepEqual(table,{rows:2,controls:0,fit:true},mode);
+    const table=await js("(()=>{const p=document.querySelector('.local-library'),wrap=p.querySelector('.table-wrap').getBoundingClientRect(),rows=[...p.querySelectorAll('tr[data-track-id]:not([hidden])')];return {rows:rows.length,controls:p.querySelectorAll('[data-action=library-view],[data-action=library-import]').length,retired:p.querySelectorAll('input[type=checkbox],.load,.load-cell,.load-target').length,art:rows.every(r=>r.querySelector('.library-artwork .art')),draggable:rows.every(r=>r.draggable),fit:rows.length===2&&rows.every(r=>{const b=r.getBoundingClientRect();return b.width>0&&b.left>=wrap.left&&b.right<=wrap.right+1;})};})()");
+    assert.deepEqual(table,{rows:2,controls:0,retired:0,art:true,draggable:true,fit:true},mode);
+    // The BPM column shows exactly the measured value (or a dash when no reliable grid exists); nothing is invented.
+    const tracks=(await read()).tracks,cells=await js("[...document.querySelectorAll('.local-library tr[data-track-id]:not([hidden])')].map(r=>[r.dataset.trackId,r.querySelector('.bpm-cell').textContent])");
+    for(const [id,text] of cells){const bpm=tracks.find(t=>t.id===id).bpm;assert.equal(text,bpm>0?bpm.toFixed(2):'—',mode+' BPM cell');}
   }
   const saved=await js("JSON.parse(localStorage.getItem('deck-craft.ui.v1')).library");assert.equal(saved.crate,playlist.id);assert.equal(saved.query,"nonmatching retained query");
-  checks.push("Perform and Library show both real-native tracks and contained row-load controls despite retained hidden filters; stored collection/query preferences are unchanged");
+  // Row selection is an actual click on a row; it never loads a deck or alters playback.
+  const before=(await command({type:"status"})).snapshot;
+  await js("document.querySelector('.local-library tr[data-track-id]:not([hidden])').click()");
+  assert.equal(await js("document.querySelectorAll('.local-library tr[aria-selected=true]').length"),1);
+  const after=(await command({type:"status"})).snapshot;
+  assert.deepEqual(after.decks.map(d=>[d.trackId,d.loadGeneration,d.playing]),before.decks.map(d=>[d.trackId,d.loadGeneration,d.playing]));
+  checks.push("Perform and Library show both real-native tracks as art/title/BPM/time rows (no checkbox, load arrow or load picker) despite retained hidden filters; row selection changes no deck; stored collection/query preferences are unchanged");
   return {collections:(await read()).collections,playlistId:playlist.id};
 };
