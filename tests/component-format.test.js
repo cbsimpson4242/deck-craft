@@ -9,6 +9,7 @@ import { createSession, reduceSession } from '../src/session.js';
 import { renderCanvasContent } from '../src/canvas-view.js';
 import { renderDesignPreview } from '../src/canvas-editor.js';
 import { NativeSession } from '../src/native.js';
+import { NATIVE_PROFILE } from '../src/backends.js';
 
 test('all kinds round-trip; strict unknown fields, markup, URLs, bounds and versions fail closed',()=>{
  for(const kind of COMPONENT_KINDS)assert.deepEqual(parseDesign(JSON.stringify(createComponent(kind))),createComponent(kind));
@@ -38,9 +39,9 @@ test('a component theme never reaches waveform rendering or track metadata',()=>
 test('creator deck previews cannot enter native transport painting',()=>{
  const markup=renderDesignPreview(createComponent('deck'));
  const previous=globalThis.document;
- globalThis.document={body:{classList:{add(){}}},querySelector:selector=>selector==='.app'?{}:selector==='.native-audio-bar'?{querySelector:()=>({})}:null,querySelectorAll:selector=>selector==='[data-field="playing"]'&&markup.includes('data-field="playing"')?[{dataset:{},setAttribute(){}}]:[]};
+ globalThis.document={body:{classList:{add(){}},dataset:{}},querySelector:selector=>selector==='.app'?{}:selector==='.native-audio-bar'?{querySelector:()=>({})}:null,querySelectorAll:selector=>selector==='[data-field="playing"]'&&markup.includes('data-field="playing"')?[{dataset:{},setAttribute(){}}]:[]};
  try {
-  assert.doesNotThrow(()=>NativeSession.prototype.paint.call({store:{get:createSession},status:{ready:false,decks:[]},busy:new Set(),initialized:true,paintStrip:NativeSession.prototype.paintStrip,paintClock:NativeSession.prototype.paintClock}));
+  assert.doesNotThrow(()=>NativeSession.prototype.paint.call({profile:NATIVE_PROFILE,store:{get:createSession},status:{ready:false,decks:[]},busy:new Set(),initialized:true,paintStrip:NativeSession.prototype.paintStrip,paintClock:NativeSession.prototype.paintClock}));
   assert.doesNotMatch(markup,/ data-(?:action|field|deck|wave-deck|track-id)=/);
  } finally {if(previous===undefined)delete globalThis.document;else globalThis.document=previous;}
 });

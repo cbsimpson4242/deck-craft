@@ -115,7 +115,8 @@ class AudioClient extends EventEmitter {
       clearTimeout(item.timer);
       if (message.ok) item.resolve(this.snapshot);
       else item.reject(Error(String(message.error || "audio_command_rejected")));
-    } else if (message.kind === "waveform") this.emit("waveform", message);
+    } else if(message.kind==="analysis") this.emit("analysis",message);
+    else if (message.kind === "waveform") this.emit("waveform", message);
   }
   request(command) {
     if (this.pending.size >= 128) return Promise.reject(Error("audio_command_busy"));

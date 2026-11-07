@@ -1,4 +1,5 @@
-import { DECK_IDS, LAYOUTS, trackById } from './catalog.js';
+import { DECK_IDS, LAYOUTS, trackById, setBackendActive } from './catalog.js';
+import { createBrowserBridge } from './browser-audio.js';
 import { NativeSession, restoreNativeCatalog } from './native.js';
 import { createStore } from './store.js';
 import { createViewOptions, renderSession } from './views.js';
@@ -11,7 +12,11 @@ import { WaveGesture } from './wave-input.js';
 import { TrackDragLoader } from './drag-load.js';
 
 const root=document.getElementById('app');
-const nativeBridge=globalThis.deckCraftNative||null;
+// The native desktop bridge is authoritative when present; otherwise the page may use its own browser backend.
+const hostBridge=globalThis.deckCraftNative||null;
+const browserHost=hostBridge?null:await createBrowserBridge(globalThis);
+const nativeBridge=hostBridge||browserHost?.bridge||null;
+setBackendActive(nativeBridge?(nativeBridge.backend?.id||'native'):null);
 const nativeWarning=await restoreNativeCatalog(nativeBridge);
 let nativeAudio=null;
 let libraryUI=null;
@@ -22,7 +27,7 @@ const options=Object.fromEntries(LAYOUTS.map(layout=>[layout.id,createViewOption
 const waveZoom=new WaveZoom(root,()=>{gestures?.cancelAll();painter?.refresh();});
 const $=(selector,parent=root)=>[...parent.querySelectorAll(selector)].find(el=>!el.closest('.design-preview'));
 const $$=(selector,parent=root)=>[...parent.querySelectorAll(selector)].filter(el=>!el.closest('.design-preview'));
-let toastTimer;
+let toastTimer;let selectedTrack=null;
 function toast(message,ms=2800) {
   clearTimeout(toastTimer);const target=$('.toast');target.textContent=message;
   toastTimer=setTimeout(()=>{const current=$('.toast');if(current)current.textContent='';},ms);
@@ -94,14 +99,15 @@ function update({paint=true}={}) {
   $$('.library').forEach(el=>el.classList.toggle('tight-rows',state.library.dense));
   $$('.view-toggle').forEach(el=>el.setAttribute('aria-pressed',String(state.library.dense)));
   $$('.search').forEach(el=>{if(el.value!==state.library.query)el.value=state.library.query;});
+  $$('[data-action="master"]').forEach(el=>el.setAttribute('aria-pressed',String(state.master===el.dataset.deck)));
   $$('.load-target').forEach(el=>el.value=state.library.target);
   const query=state.library.query.toLowerCase();
   const localOrder=nativeAudio?orderedLibraryTracks(state,{unfiltered:true}):null,localVisible=new Set(localOrder?.map(t=>t.id));
   $$('tr[data-track-id]').forEach(row=>{
     const track=trackById(row.dataset.trackId),matches=nativeAudio?localVisible.has(track.id):(state.library.crate==='all'||track.genre===state.library.crate)&&[track.title,track.artist,track.genre,track.key,track.bpm].join(' ').toLowerCase().includes(query);
     row.hidden=!matches;
-    row.classList.toggle('selected',state.decks[state.library.target].trackId===track.id);
-    $('.load',row).setAttribute('aria-label','Load '+track.title+' into deck '+state.library.target);
+    if(!nativeAudio)row.classList.toggle('selected',row.dataset.trackId===selectedTrack);
+    $('.load',row)?.setAttribute('aria-label','Load '+track.title+' into deck '+state.library.target);
   });
   $$('.library').forEach(el=>{const count=$$('tr[data-track-id]:not([hidden])',el).length;const counter=$('.track-count',el);if(counter)counter.textContent=count+(count===1?' track':' tracks');$('.empty',el).hidden=count!==0;});
   $$('.crate-name').forEach(el=>el.textContent=state.library.crate==='all'?'All tracks':state.library.crate);
@@ -119,6 +125,7 @@ function update({paint=true}={}) {
   $$('[data-action="pair"]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.value===state.pair)));
   nativeAudio?.paint();
   libraryUI?.paint();
+  if(!nativeAudio&&browserHost&&!browserHost.support.supported){const detail=$('.status-detail');if(detail)detail.textContent=' · Synthetic demo collection · browser audio unavailable here (missing: '+browserHost.support.reasons.join(', ')+')';}
   if(paint)painter.refresh();
 }
 // The settings dialog is DOM, so a re-render must restore its open state and focus (no reload, no session change).
@@ -150,7 +157,15 @@ function mount() {
   if(token?.cog)$('.settings-open')?.focus({preventScroll:true});
   else if(token&&wasOpen&&dialog)[...dialog.querySelectorAll(SETTINGS_FOCUSABLE)][Math.max(0,token.settings)]?.focus({preventScroll:true});
 }
-store.subscribe((state,action)=>{if(action.type==='native-clock'){painter.mark();paintWarning();return;}if(['layout','load','workspace'].includes(action.type))mount();else update();});
+// Engine receipts repaint only the cached clocks, waveforms and meters. The few state changes a receipt can
+// carry that other controls display (tempo master, tempo, pitch lock and sync) also refresh those controls once.
+const tempoSignature=state=>state.master+'|'+DECK_IDS.map(id=>{const d=state.decks[id];return d.pitch+','+d.pitchLock+','+d.sync;}).join(';');
+let tempoKey=tempoSignature(store.get());
+store.subscribe((state,action)=>{
+  if(action.type==='native-clock'){painter.mark();paintWarning();const key=tempoSignature(state);if(key!==tempoKey){tempoKey=key;update();}return;}
+  tempoKey=tempoSignature(state);
+  if(['layout','load','workspace'].includes(action.type))mount();else update();
+});
 // Canvas waveforms are sized to the box in device pixels, so a resize repaints them.
 let resizeFrame=0;window.addEventListener('resize',()=>{cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(()=>painter.refresh());});
 function dispatch(action){if(!nativeAudio?.dispatch(action))store.dispatch(action);}
@@ -169,11 +184,14 @@ root.addEventListener('close',event=>{
 },true);
 const LEAVES_SETTINGS=new Set(['open-mixer','show-four','import-audio','library-import']);
 root.addEventListener('click',event=>{
+  const row=event.target.closest('tr[data-track-id]');if(row&&!event.target.closest('button,input,select')){selectedTrack=row.dataset.trackId;libraryUI?.selectRow(row,event);if(!libraryUI)update();}
   const target=event.target.closest('button[data-action]');if(!target||!root.contains(target))return;
   if(LEAVES_SETTINGS.has(target.dataset.action)&&target.closest('.settings-dialog[open]'))closeSettings();
   if(libraryUI?.handleClick(target))return;
   const state=store.get(),ui=options[state.layout],id=target.dataset.deck,field=target.dataset.field;
   switch(target.dataset.action) {
+    case 'master':dispatch({type:'master',deck:id});break;
+    case 'deck-load':{const trackId=libraryUI?.lastSelected||selectedTrack;if(trackId)loadTrack(id,trackId);else toast('Select a library track first.');break;}
     case 'import-audio':nativeAudio?.importAudio(store.get().library.target);break;
     case 'reconnect-audio':nativeAudio?.reconnect();break;
     case 'mode':if(store.getWorkspace().active)store.dispatchWorkspace({type:'active',value:false});dispatch({type:'mode',value:target.dataset.value});break;
@@ -238,9 +256,14 @@ root.addEventListener('contextmenu',event=>{
   const button=event.target.closest('[data-action="hot-cue"]');if(!button)return;event.preventDefault();dispatch({type:'setCue',deck:button.dataset.deck,index:Number(button.dataset.index)});toast('Cue stored at the current UI position.');
 });
 root.addEventListener('keydown',event=>{
-  const row=event.target.closest('tr[data-track-id]');if(row&&event.target===row&&event.key==='Enter'){$('.load',row).click();}
+  const row=event.target.closest('tr[data-track-id]');if(!row||event.target!==row)return;
+  if(event.altKey&&DECK_IDS.includes(event.key.toUpperCase())){event.preventDefault();loadTrack(event.key.toUpperCase(),row.dataset.trackId);}
+  else if(['Enter',' '].includes(event.key)){event.preventDefault();selectedTrack=row.dataset.trackId;libraryUI?.selectRow(row,event);if(!libraryUI)update();}
+
 });
 document.addEventListener('keydown',event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'){event.preventDefault();$('.search')?.focus();}});
+
+
 editor=new CanvasEditor(root,store,{redraw:mount,say:toast});
 new TrackDragLoader(root,{load:loadTrack,say:toast,isNative:()=>Boolean(nativeAudio)});
 nativeAudio=nativeBridge?new NativeSession(nativeBridge,store,{redraw:mount,update:updateTransport,say:toast}):null;
@@ -253,4 +276,6 @@ if(nativeAudio){libraryUI=new LibraryController(nativeBridge,store,nativeAudio,{
 if(nativeAudio)nativeAudio.warning=nativeWarning;
 mount();
 {const migrated=store.takeNotice();if(migrated)toast(migrated,9000);}
+if(nativeBridge?.unlock){for(const type of ['pointerdown','keydown','touchend'])document.addEventListener(type,()=>nativeBridge.unlock(),{capture:true,passive:true});}
+if(nativeBridge?.haltAll)addEventListener('pagehide',()=>nativeBridge.haltAll());
 await nativeAudio?.initialize();

@@ -15,7 +15,7 @@ test('folder import is recursive, bounded, deduplicated, symlink-safe and keeps 
  for(const name of ['One.wav','nested/Two.MP3','broken.wav','notes.txt'])await writeFile(path.join(dir,'music',name),'generated');
  await symlink(path.join(dir,'music'),path.join(dir,'music/nested/cycle'));
  const library=new LocalLibrary(path.join(dir,'private'));let calls=0;const progress=[];
- const inspect=async r=>{calls++;if(r.path.endsWith('broken.wav'))throw Error('unsupported_or_corrupt_audio');return {duration:30,channels:2,sampleRate:48000};};
+ const inspect=async r=>{calls++;if(r.path.endsWith('broken.wav'))throw Error('unsupported_or_corrupt_audio');return {duration:30,channels:2,sampleRate:48000,analysisVersion:1,beatGrid:null,artwork:null};};
  const first=await importSelection(library,[path.join(dir,'music')],{folder:true,inspect,progress:e=>progress.push(e)});
  assert.equal(first.summary.added,2);assert.equal(first.summary.failed,1);assert.equal(first.summary.skipped,2);
  assert.equal(first.summary.errors[0].name,'broken.wav');assert.ok(!JSON.stringify(first).includes(dir));

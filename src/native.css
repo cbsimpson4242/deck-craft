@@ -59,3 +59,18 @@
   .native-desktop .statusbar>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%}
 }
 @media (prefers-reduced-motion:reduce){.native-audio-bar button,.library-imports button,.library-navigation button,.library-selection button,.playlist-order button,.collection-dialog button{transition:none}}
+
+/* Library rows: artwork thumbnail, row selection and the load hint. Selection checkboxes, the per-row load
+   arrow and the load-target menu are gone; rows load by drag or Alt+A/B/C/D. */
+.library-artwork{width:48px}
+.library-artwork .art{display:block;width:34px;height:34px;border-radius:4px}
+img.art{object-fit:cover;background:var(--well)}
+img.art::after{content:none}
+.library-load-hint{color:var(--muted);font-size:11px;line-height:1.4;padding:5px 14px;margin:0;flex:none}
+.local-library tr[aria-selected="true"]{outline:1px solid var(--accent);outline-offset:-1px}
+/* Real tempo-master, pitch-lock and library-load chips under the transport (SYNC lives in the transport row). */
+.deck-tools{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.dk-chip{min-height:28px;padding:4px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--raised);color:var(--ink);font:700 10px/1 var(--font);letter-spacing:.08em;white-space:nowrap}
+.dk-chip:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.dk-chip[aria-pressed="true"]{background:var(--deck,var(--accent));border-color:var(--deck,var(--accent));color:#0b120a}
+.deck.drop-target{outline:2px solid var(--accent)}

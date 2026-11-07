@@ -14,6 +14,8 @@ use std::{
 
 pub struct StreamState {
     pub position_frames: AtomicU64,
+    pub rate_bits: AtomicU64,
+    pub pitch_lock: AtomicBool,
     pub underrun_samples: AtomicU64,
     pub finished: AtomicBool,
     pub failed: AtomicBool,
@@ -21,7 +23,7 @@ pub struct StreamState {
     pub release_producer: AtomicBool,
 }
 pub struct PcmSource {
-    consumer: Option<Consumer<f32>>,
+    consumer: Option<Consumer<(f32, f64)>>,
     state: Arc<StreamState>,
     channels: ChannelCount,
     rate: SampleRate,
@@ -36,6 +38,30 @@ pub struct Prepared {
     pub duration: f64,
     pub channels: u16,
     pub sample_rate: u32,
+}
+impl PcmSource {
+    pub fn advance_to(&mut self, target: f64) -> bool {
+        let target_frames = target * self.rate.get() as f64;
+        while (self.state.position_frames.load(Ordering::Relaxed) as f64) < target_frames {
+            if self
+                .consumer
+                .as_ref()
+                .is_none_or(|c| c.slots() < self.channels.get() as usize)
+            {
+                return false;
+            }
+            for _ in 0..self.channels.get() {
+                if let Some(c) = self.consumer.as_mut() {
+                    if let Ok((_, p)) = c.pop() {
+                        self.state
+                            .position_frames
+                            .store(self.offset + p.round() as u64, Ordering::Relaxed);
+                    }
+                }
+            }
+        }
+        true
+    }
 }
 impl Iterator for PcmSource {
     type Item = f32;
@@ -60,13 +86,12 @@ impl Iterator for PcmSource {
             return Some(0.0);
         }
         match self.consumer.as_mut()?.pop() {
-            Ok(sample) => {
+            Ok((sample, position)) => {
                 self.consumed += 1;
                 if self.consumed % self.channels.get() as u64 == 0 {
-                    self.state.position_frames.store(
-                        self.offset + self.consumed / self.channels.get() as u64,
-                        Ordering::Relaxed,
-                    );
+                    self.state
+                        .position_frames
+                        .store(self.offset + position.round() as u64, Ordering::Relaxed);
                 }
                 Some(sample)
             }
@@ -114,7 +139,7 @@ impl Drop for PcmSource {
         self.state.consumer_dropped.store(true, Ordering::Release);
     }
 }
-fn push(producer: &mut Producer<f32>, state: &StreamState, mut sample: f32) -> bool {
+fn push(producer: &mut Producer<(f32, f64)>, state: &StreamState, mut sample: (f32, f64)) -> bool {
     loop {
         if state.consumer_dropped.load(Ordering::Acquire) {
             return false;
@@ -129,6 +154,15 @@ fn push(producer: &mut Producer<f32>, state: &StreamState, mut sample: f32) -> b
     }
 }
 pub fn prepare(path: &str, identity: &Identity, position: f64) -> Result<Prepared, &'static str> {
+    prepare_tempo(path, identity, position, 1.0, true)
+}
+pub fn prepare_tempo(
+    path: &str,
+    identity: &Identity,
+    position: f64,
+    tempo: f64,
+    locked: bool,
+) -> Result<Prepared, &'static str> {
     let mut decoder = decode(checked_file(path, identity)?)?;
     let duration = decoder.total_duration().unwrap().as_secs_f64();
     if position < 0.0 || position > duration {
@@ -142,53 +176,41 @@ pub fn prepare(path: &str, identity: &Identity, position: f64) -> Result<Prepare
     }
     let channels = decoder.channels();
     let rate = decoder.sample_rate();
-    let capacity = rate.get() as usize * channels.get() as usize / 2;
-    let (mut producer, consumer) = RingBuffer::<f32>::new(capacity);
+    let capacity = rate.get() as usize * channels.get() as usize / 10;
+    let (mut producer, consumer) = RingBuffer::<(f32, f64)>::new(capacity);
     let offset = (position * rate.get() as f64).round() as u64;
     let state = Arc::new(StreamState {
         position_frames: AtomicU64::new(offset),
+        rate_bits: AtomicU64::new(tempo.to_bits()),
+        pitch_lock: AtomicBool::new(locked),
         underrun_samples: AtomicU64::new(0),
         finished: AtomicBool::new(false),
         failed: AtomicBool::new(false),
         consumer_dropped: AtomicBool::new(false),
         release_producer: AtomicBool::new(false),
     });
-    let initial = rate.get() as usize * channels.get() as usize / 10;
-    let mut count = 0;
-    for _ in 0..initial {
-        match decoder.next() {
-            Some(sample) => {
-                let sample = if sample.is_finite() {
-                    sample.clamp(-1.0, 1.0)
-                } else {
-                    0.0
-                };
-                producer.push(sample).map_err(|_| "audio_buffer_failed")?;
-                count += 1;
-            }
-            None => {
-                state.finished.store(true, Ordering::Release);
-                break;
-            }
-        }
-    }
-    if count == 0 {
+    let mut processor = crate::stretch::Processor::new(decoder, channels.get() as usize, rate.get());
+    let initial = processor.block(tempo, locked);
+    if initial.is_empty() {
         return Err("unsupported_or_corrupt_audio");
+    }
+    for sample in initial {
+        producer.push(sample).map_err(|_| "audio_buffer_failed")?;
     }
     let worker_state = state.clone();
     thread::spawn(move || {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             while !worker_state.consumer_dropped.load(Ordering::Acquire) {
-                let Some(sample) = decoder.next() else {
+                let tempo = f64::from_bits(worker_state.rate_bits.load(Ordering::Acquire));
+                let locked = worker_state.pitch_lock.load(Ordering::Acquire);
+                let block = processor.block(tempo, locked);
+                if block.is_empty() {
                     break;
-                };
-                let sample = if sample.is_finite() {
-                    sample.clamp(-1.0, 1.0)
-                } else {
-                    0.0
-                };
-                if !push(&mut producer, &worker_state, sample) {
-                    break;
+                }
+                for sample in block {
+                    if !push(&mut producer, &worker_state, sample) {
+                        return;
+                    }
                 }
             }
         }));
@@ -227,9 +249,11 @@ mod tests {
     use super::*;
     #[test]
     fn underrun_silence_preserves_whole_stereo_frames_and_media_position() {
-        let (mut producer, consumer) = RingBuffer::<f32>::new(8);
+        let (mut producer, consumer) = RingBuffer::<(f32, f64)>::new(8);
         let state = Arc::new(StreamState {
             position_frames: AtomicU64::new(0),
+            rate_bits: AtomicU64::new(1.0f64.to_bits()),
+            pitch_lock: AtomicBool::new(true),
             underrun_samples: AtomicU64::new(0),
             finished: AtomicBool::new(false),
             failed: AtomicBool::new(false),
@@ -246,11 +270,11 @@ mod tests {
             offset: 0,
             silence_remaining: 0,
         };
-        producer.push(0.25).unwrap();
+        producer.push((0.25, 1.0)).unwrap();
         assert_eq!(source.next(), Some(0.0));
         assert_eq!(source.next(), Some(0.0));
         assert_eq!(state.position_frames.load(Ordering::Relaxed), 0);
-        producer.push(0.75).unwrap();
+        producer.push((0.75, 1.0)).unwrap();
         assert_eq!(source.next(), Some(0.25));
         assert_eq!(source.next(), Some(0.75));
         assert_eq!(state.position_frames.load(Ordering::Relaxed), 1);
@@ -259,6 +283,8 @@ mod tests {
     fn stream_state() -> Arc<StreamState> {
         Arc::new(StreamState {
             position_frames: AtomicU64::new(0),
+            rate_bits: AtomicU64::new(1.0f64.to_bits()),
+            pitch_lock: AtomicBool::new(true),
             underrun_samples: AtomicU64::new(0),
             finished: AtomicBool::new(false),
             failed: AtomicBool::new(false),
@@ -266,7 +292,7 @@ mod tests {
             release_producer: AtomicBool::new(false),
         })
     }
-    fn pcm_source(consumer: Consumer<f32>, state: &Arc<StreamState>) -> PcmSource {
+    fn pcm_source(consumer: Consumer<(f32, f64)>, state: &Arc<StreamState>) -> PcmSource {
         PcmSource {
             consumer: Some(consumer),
             state: state.clone(),
@@ -281,7 +307,7 @@ mod tests {
     #[test]
     fn channel_strip_leaves_position_underrun_accounting_and_retirement_to_the_stream() {
         use crate::dsp::{DeckControls, Knob, Strip};
-        let (mut producer, consumer) = RingBuffer::<f32>::new(4096);
+        let (mut producer, consumer) = RingBuffer::<(f32, f64)>::new(4096);
         let state = stream_state();
         let controls = DeckControls::new(0.5);
         controls.set(Knob::Gain, 100.0);
@@ -291,9 +317,9 @@ mod tests {
         assert_eq!(strip.next(), Some(0.0));
         assert_eq!(state.position_frames.load(Ordering::Relaxed), 0);
         assert_eq!(state.underrun_samples.load(Ordering::Relaxed), 2);
-        for _ in 0..400 {
-            producer.push(0.1).unwrap();
-            producer.push(0.1).unwrap();
+        for frame in 1..=400 {
+            producer.push((0.1, frame as f64)).unwrap();
+            producer.push((0.1, frame as f64)).unwrap();
         }
         let out: Vec<f32> = (0..800).map(|_| strip.next().unwrap()).collect();
         assert_eq!(state.position_frames.load(Ordering::Relaxed), 400, "media position still counts consumed frames");

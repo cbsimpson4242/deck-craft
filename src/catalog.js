@@ -25,6 +25,11 @@ export const TRACKS = Object.freeze([
   { id:'half-remembered', title:'Half Remembered', artist:'Field Theory', bpm:125, key:'9A', duration:406, genre:'Minimal', color:'#92ae99' }
 ]);
 const localTracks = new Map();
+let playbackBackend = null;
+/** Identity of the real audio backend serving the library (native or browser); set once at startup. */
+export const setBackendActive = id => { playbackBackend = id || null; };
+export const backendActive = () => playbackBackend !== null;
+export const browserBackend = () => playbackBackend === 'browser';
 let collections = [];
 export const libraryCollections = () => collections;
 // Session-only fine waveform envelopes sent by the native engine for decks that are loaded now. They
@@ -66,7 +71,9 @@ export const allTracks = () => [...TRACKS,...localTracks.values()];
 function safeLocalTrack(track) {
  if(!track || !/^local-[0-9a-f-]{36}$/.test(track.id) || typeof track.title!=='string' || !Number.isFinite(track.duration) || track.duration<=0 || track.duration>7200)throw Error('Invalid local track');
  const peaks=Array.isArray(track.peaks)&&track.peaks.length===512&&track.peaks.every(n=>Number.isFinite(n)&&n>=0&&n<=1)?track.peaks.slice():[];
- const safe={id:track.id,title:track.title.slice(0,512),artist:'Local audio',genre:'Local files',bpm:0,key:'—',duration:track.duration,color:'#96c7a8',local:true,peaks};
+ const grid=track.beatGrid;const validGrid=grid&&Number.isFinite(grid.bpm)&&grid.bpm>=60&&grid.bpm<=200&&Number.isFinite(grid.offset)&&grid.offset>=0&&grid.offset<1.01&&Number.isFinite(grid.confidence)&&grid.confidence>=0&&grid.confidence<=1;
+ const artwork=typeof track.artwork==='string'&&track.artwork.length<=22000&&/^data:image\/png;base64,iVBOR[A-Za-z0-9+/]*={0,2}$/.test(track.artwork)?track.artwork:null;
+ const safe={id:track.id,title:track.title.slice(0,512),artist:'Local audio',genre:'Local files',bpm:validGrid?grid.bpm:0,beatGrid:validGrid?{bpm:grid.bpm,offset:grid.offset,confidence:grid.confidence}:null,artwork,analysisVersion:track.analysisVersion===1?1:0,persisted:track.persisted!==false,key:'—',duration:track.duration,color:'#96c7a8',local:true,peaks};
  return safe;
 }
 export function registerLocalTrack(track) {

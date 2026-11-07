@@ -5,6 +5,7 @@ import { LAYOUTS, THEMES } from '../src/catalog.js';
 import { createSession, reduceSession } from '../src/session.js';
 import { createViewOptions, renderSession } from '../src/views.js';
 import { NativeSession } from '../src/native.js';
+import { NATIVE_PROFILE } from '../src/backends.js';
 
 const between = (html, open, close) => html.slice(html.indexOf(open), html.indexOf(close, html.indexOf(open)) + close.length);
 const render = layout => renderSession(reduceSession(createSession(), { type: 'layout', value: layout.id }), createViewOptions());
@@ -65,12 +66,12 @@ function fakeDocument(spec) {
   const nodes = { '.app': element(), '.native-audio-bar': element(), '.deckbar-status': element(), '.settings-audio-state': element(), '.native-import': element(), '.deckbar-brand small': element() };
   nodes['.native-audio-bar'].querySelector = selector => selector === '.native-audio-state' ? (nodes.state ||= element()) : null;
   const reconnect = [element(), element()];
-  return { nodes, reconnect, document: { body: { classList: { add() {} } }, querySelector: selector => nodes[selector] || null, querySelectorAll: selector => selector === '[data-action="reconnect-audio"]' ? reconnect : [] } };
+  return { nodes, reconnect, document: { body: { classList: { add() {} }, dataset: {} }, querySelector: selector => nodes[selector] || null, querySelectorAll: selector => selector === '[data-action="reconnect-audio"]' ? reconnect : [] } };
 }
 function paint(status, { busy = [], initialized = true } = {}) {
   const fake = fakeDocument(), previous = globalThis.document;
   globalThis.document = fake.document;
-  try { NativeSession.prototype.paint.call({ store: { get: createSession }, status, busy: new Set(busy), initialized, mixerSynced:true, paintStrip:NativeSession.prototype.paintStrip, paintClock() {} }); } finally { if (previous === undefined) delete globalThis.document; else globalThis.document = previous; }
+  try { NativeSession.prototype.paint.call({ profile: NATIVE_PROFILE, store: { get: createSession }, status, busy: new Set(busy), initialized, mixerSynced:true, paintStrip:NativeSession.prototype.paintStrip, paintClock() {} }); } finally { if (previous === undefined) delete globalThis.document; else globalThis.document = previous; }
   return fake;
 }
 

@@ -1,6 +1,9 @@
+pub mod analysis;
+pub mod artwork;
 pub mod dsp;
 pub mod fullkill;
 pub mod stream;
+pub mod stretch;
 use rodio::{Decoder, Source};
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
@@ -156,6 +159,18 @@ pub enum Command {
     Crossfader {
         value: f64,
     },
+    Tempo {
+        deck: String,
+        rate: f64,
+        #[serde(rename = "pitchLock")]
+        pitch_lock: bool,
+    },
+    Master {
+        deck: String,
+    },
+    Sync {
+        deck: String,
+    },
     /// Per-deck input trim, -12..+12 dB (0..=100, 50 = 0 dB).
     Gain {
         deck: String,
@@ -199,6 +214,14 @@ pub fn deck_index(deck: &str) -> Result<usize, &'static str> {
 pub fn validate(command: &Command) -> Result<(), &'static str> {
     match command {
         Command::Status | Command::Shutdown => Ok(()),
+        Command::Tempo { deck, rate, .. } => {
+            deck_index(deck)?;
+            if !rate.is_finite() || !(0.92..=1.08).contains(rate) {
+                return Err("invalid_tempo");
+            }
+            Ok(())
+        }
+        Command::Master { deck } | Command::Sync { deck } => deck_index(deck).map(|_| ()),
         Command::Play { deck } | Command::Pause { deck } => deck_index(deck).map(|_| ()),
         Command::Seek { deck, position } => {
             deck_index(deck)?;
@@ -423,6 +446,24 @@ mod tests {
     }
     #[test]
     fn strict_semantic_schema() {
+        for rate in [0.91, 1.09, f64::NAN, f64::INFINITY] {
+            assert!(
+                validate(&Command::Tempo {
+                    deck: "A".into(),
+                    rate,
+                    pitch_lock: true
+                })
+                .is_err()
+            );
+        }
+        for raw in [
+            r#"{"id":"x","command":{"type":"tempo","deck":"A","rate":1,"pitchLock":true,"path":"bad"}}"#,
+            r#"{"id":"x","command":{"type":"tempo","deck":"A","rate":1,"pitchLock":1}}"#,
+            r#"{"id":"x","command":{"type":"sync","deck":"A","master":"B"}}"#,
+        ] {
+            assert!(serde_json::from_str::<Request>(raw).is_err());
+        }
+
         assert!(
             serde_json::from_str::<Request>(
                 r#"{"id":"x","command":{"type":"seek","deck":"A","position":true}}"#

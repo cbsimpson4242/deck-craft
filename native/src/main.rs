@@ -2,10 +2,10 @@ use deck_craft_audio::snapshot_interval;
 use deck_craft_audio::{
     Command, Identity, Request, Waveform, analyze_waveform, base64, checked_file, deck_index, decode, detail_bin_count, read_frame,
     dsp::{DeckControls, Knob, Strip},
-    stream::{Prepared, StreamState, prepare},
+    stream::{Prepared, StreamState, prepare_tempo},
     validate,
 };
-use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player, Source};
+use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player};
 use serde_json::{Value, json};
 use std::{
     io::{self, Write},
@@ -27,12 +27,21 @@ struct Candidate {
     prepared: Prepared,
     resume: bool,
     analyze: bool,
+    rate: f64,
+    pitch_lock: bool,
+    sync_master: Option<(usize, u64, f64)>,
 }
 enum Message {
     Request(Request),
     Invalid(String),
     End,
     Candidate(Result<Candidate, (String, usize, &'static str)>),
+    Analysis {
+        deck: usize,
+        generation: u64,
+        track_id: String,
+        metadata: Value,
+    },
     Wave {
         deck: usize,
         generation: u64,
@@ -56,6 +65,10 @@ struct AudioDeck {
     generation: u64,
     ended: bool,
     stream: Option<Arc<StreamState>>,
+    rate: f64,
+    pitch_lock: bool,
+    beat_grid: Option<deck_craft_audio::analysis::BeatGrid>,
+    synced: bool,
 }
 /// Channel fader gain: 0.25 headroom times the 0..=100 level. The previous implementation
 /// applied this as the Rodio player volume; it now lives in the strip so it is smoothed with
@@ -72,6 +85,8 @@ struct Engine {
     resources: Vec<Arc<StreamState>>,
     engine_id: String,
     sequence: u64,
+    master: Option<usize>,
+    sync_pending: [Option<(usize, u64, f64)>; 4],
 }
 impl AudioDeck {
     /// A paused or ended source is not polled by the device, so its smoothing cannot advance;
@@ -97,10 +112,10 @@ impl Engine {
    let underruns=d.stream.as_ref().map(|s|s.underrun_samples.load(Ordering::Relaxed)).unwrap_or(0);
    let playing=ready&&!failed&&d.track_id.is_some()&&!d.player.is_paused()&&!d.ended;
    let meter=if playing {d.controls.meter()} else {(0.0,0.0)};
-   json!({"id":(["A","B","C","D"][i]),"trackId":d.track_id,"duration":d.duration,"channels":d.channels,"sampleRate":d.sample_rate,"position":position,"playing":ready&&!failed&&d.track_id.is_some()&&!d.player.is_paused()&&!d.ended,"level":d.level,"assign":d.side.as_str(),"meter":{"l":meter.0,"r":meter.1},"gain":d.controls.get(Knob::Gain),"hi":d.controls.get(Knob::Hi),"mid":d.controls.get(Knob::Mid),"low":d.controls.get(Knob::Low),"filter":d.controls.get(Knob::Filter),"loadGeneration":d.generation,"waveGeneration":wave_tokens[i].load(Ordering::SeqCst),"loading":loading[i],"underrunSamples":underruns,"error":if failed{Some("decoder_failed")}else{None}})
+   json!({"id":(["A","B","C","D"][i]),"trackId":d.track_id,"duration":d.duration,"channels":d.channels,"sampleRate":d.sample_rate,"position":position,"playing":playing,"level":d.level,"assign":d.side.as_str(),"meter":{"l":meter.0,"r":meter.1},"gain":d.controls.get(Knob::Gain),"hi":d.controls.get(Knob::Hi),"mid":d.controls.get(Knob::Mid),"low":d.controls.get(Knob::Low),"filter":d.controls.get(Knob::Filter),"loadGeneration":d.generation,"waveGeneration":wave_tokens[i].load(Ordering::SeqCst),"loading":loading[i],"underrunSamples":underruns,"rate":d.rate,"pitchLock":d.pitch_lock,"synced":d.synced,"beatGrid":d.beat_grid,"error":if failed{Some("decoder_failed")}else{None}})
   }).collect();
         let output=self.output.as_ref().map(|o|json!({"sampleRate":o.config().sample_rate().get(),"channels":o.config().channel_count().get(),"backend":"ALSA default device"}));
-        json!({"ready":ready,"output":output,"error":if ready{Value::Null}else{json!("audio_output_unavailable")},"decks":decks,"crossfader":self.crossfader,"capabilities":{"channelEq":true,"channelMeters":true,"crossfaderAssign":true}})
+        json!({"ready":ready,"output":output,"error":if ready{Value::Null}else{json!("audio_output_unavailable")},"decks":decks,"crossfader":self.crossfader,"master":self.master.map(|i|["A","B","C","D"][i]),"capabilities":{"channelEq":true,"channelMeters":true,"crossfaderAssign":true}})
     }
     /// Cadence for the next unsolicited snapshot, from the decks' current state.
     fn cadence(&self) -> Duration {
@@ -135,6 +150,14 @@ impl Engine {
             d.sync_paused_controls();
         }
     }
+    fn unsync_transport(&mut self, i: usize) {
+        let master_moved = self.master == Some(i);
+        for (j, deck) in self.decks.iter_mut().enumerate() {
+            if j == i || master_moved {
+                deck.synced = false;
+            }
+        }
+    }
     fn knob(&mut self, id: &str, deck: &str, knob: Knob, value: f64) {
         let i = deck_index(deck).unwrap();
         self.decks[i].controls.set(knob, value);
@@ -156,6 +179,7 @@ impl Engine {
         analyze: bool,
         tx: &mpsc::Sender<Message>,
     ) {
+        let sync_master = self.sync_pending[i].take();
         if !self.ready() {
             self.reply(&id, Some("audio_output_unavailable"));
             return;
@@ -167,9 +191,11 @@ impl Engine {
         self.loading[i] = true;
         let generation = self.tokens[i].fetch_add(1, Ordering::SeqCst) + 1;
         let tx = tx.clone();
+        let rate = self.decks[i].rate;
+        let pitch_lock = self.decks[i].pitch_lock;
         thread::spawn(move || {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                prepare(&path, &identity, position)
+                prepare_tempo(&path, &identity, position, rate, pitch_lock)
             }))
             .unwrap_or(Err("decoder_failed"));
             let result = result
@@ -183,6 +209,9 @@ impl Engine {
                     prepared,
                     resume,
                     analyze,
+                    rate,
+                    pitch_lock,
+                    sync_master,
                 })
                 .map_err(|e| (id, i, e));
             let _ = tx.send(Message::Candidate(result));
@@ -214,11 +243,13 @@ impl Engine {
                 identity,
             } => {
                 let i = deck_index(&deck).unwrap();
+                self.unsync_transport(i);
                 self.stage(id, i, track_id, path, identity, 0.0, false, true, tx);
             }
             Command::Pause { deck } => {
                 let i = deck_index(&deck).unwrap();
                 self.cancel(i);
+                self.unsync_transport(i);
                 self.decks[i].player.pause();
                 self.decks[i].controls.reset_meter();
                 self.reply(&id, None);
@@ -238,8 +269,12 @@ impl Engine {
                         d.path.clone(),
                         d.identity.clone().unwrap(),
                     );
+                    self.unsync_transport(i);
                     self.stage(id, i, args.0, args.1, args.2, 0.0, true, false, tx);
                 } else {
+                    if self.decks[i].player.is_paused() {
+                        self.unsync_transport(i);
+                    }
                     self.decks[i].player.play();
                     self.reply(&id, None);
                 }
@@ -260,10 +295,130 @@ impl Engine {
                         d.path.clone(),
                         d.identity.clone().unwrap(),
                     );
+                    self.unsync_transport(i);
                     self.decks[i].player.pause();
-                self.decks[i].controls.reset_meter();
+                    self.decks[i].controls.reset_meter();
                     self.stage(id, i, args.0, args.1, args.2, position, resume, false, tx);
                 }
+            }
+            Command::Tempo {
+                deck,
+                rate,
+                pitch_lock,
+            } => {
+                let i = deck_index(&deck).unwrap();
+                if self.loading[i] {
+                    self.reply(&id, Some("deck_loading"));
+                    return true;
+                }
+                // Validate followers transactionally before changing the master.
+                let mut updates = vec![(i, rate)];
+                if self.master == Some(i) {
+                    if let Some(g) = &self.decks[i].beat_grid {
+                        for j in 0..4 {
+                            if j != i && self.decks[j].synced {
+                                if let Some(t) = &self.decks[j].beat_grid {
+                                    let r = g.bpm * rate / t.bpm;
+                                    if !(0.92..=1.08).contains(&r) {
+                                        self.reply(&id, Some("sync_tempo_out_of_range"));
+                                        return true;
+                                    }
+                                    updates.push((j, r));
+                                }
+                            }
+                        }
+                    }
+                }
+                for (j, r) in updates {
+                    self.decks[j].rate = r;
+                    if j == i {
+                        self.decks[j].pitch_lock = pitch_lock;
+                        self.decks[j].synced = false;
+                    }
+                    if let Some(st) = &self.decks[j].stream {
+                        st.rate_bits.store(r.to_bits(), Ordering::Release);
+                        if j == i {
+                            st.pitch_lock.store(pitch_lock, Ordering::Release);
+                        }
+                    }
+                }
+                self.reply(&id, None);
+            }
+            Command::Master { deck } => {
+                let i = deck_index(&deck).unwrap();
+                self.master = Some(i);
+                for d in &mut self.decks {
+                    d.synced = false;
+                }
+                self.reply(&id, None);
+            }
+            Command::Sync { deck } => {
+                let i = deck_index(&deck).unwrap();
+                let Some(m) = self.master else {
+                    self.reply(&id, Some("sync_master_required"));
+                    return true;
+                };
+                if m == i {
+                    self.reply(&id, Some("sync_same_deck"));
+                    return true;
+                }
+                let d = &self.decks[i];
+                let master = &self.decks[m];
+                let (Some(grid), Some(mg)) = (&d.beat_grid, &master.beat_grid) else {
+                    self.reply(&id, Some("beat_grid_unavailable"));
+                    return true;
+                };
+                if d.track_id.is_none()
+                    || master.track_id.is_none()
+                    || self.loading[i]
+                    || self.loading[m]
+                {
+                    self.reply(&id, Some("deck_loading"));
+                    return true;
+                }
+                let rate = mg.bpm * master.rate / grid.bpm;
+                if !(0.92..=1.08).contains(&rate) {
+                    self.reply(&id, Some("sync_tempo_out_of_range"));
+                    return true;
+                }
+                let mp = master
+                    .stream
+                    .as_ref()
+                    .map(|v| {
+                        v.position_frames.load(Ordering::Relaxed) as f64 / master.sample_rate as f64
+                    })
+                    .unwrap_or(0.0);
+                let dp = d
+                    .stream
+                    .as_ref()
+                    .map(|v| {
+                        v.position_frames.load(Ordering::Relaxed) as f64 / d.sample_rate as f64
+                    })
+                    .unwrap_or(0.0);
+                let period = 60.0 / grid.bpm;
+                let phase = ((mp - mg.offset) * mg.bpm / 60.0).rem_euclid(1.0);
+                let mut position =
+                    grid.offset + ((dp - grid.offset) / period).floor() * period + phase * period;
+                if position < 0.0 {
+                    position += period;
+                }
+                if position >= d.duration {
+                    self.reply(&id, Some("invalid_position"));
+                    return true;
+                }
+                let args = (
+                    d.track_id.clone().unwrap(),
+                    d.path.clone(),
+                    d.identity.clone().unwrap(),
+                    !d.player.is_paused() && !d.ended,
+                );
+                self.sync_pending[i] = Some((m, self.tokens[m].load(Ordering::SeqCst), mp));
+                let previous_rate = self.decks[i].rate;
+                self.decks[i].rate = rate;
+                self.decks[i].player.pause();
+                self.decks[i].controls.reset_meter();
+                self.stage(id, i, args.0, args.1, args.2, position, args.3, false, tx);
+                self.decks[i].rate = previous_rate;
             }
             Command::Level { deck, value } => {
                 let i = deck_index(&deck).unwrap();
@@ -294,7 +449,7 @@ impl Engine {
         result: Result<Candidate, (String, usize, &'static str)>,
         tx: &mpsc::Sender<Message>,
     ) {
-        let c = match result {
+        let mut c = match result {
             Ok(c) => c,
             Err((id, i, error)) => {
                 self.loading[i] = false;
@@ -312,6 +467,43 @@ impl Engine {
             self.reply(&c.request_id, Some("audio_output_unavailable"));
             return;
         }
+        if let Some((m, generation, old_position)) = c.sync_master {
+            if self.master != Some(m)
+                || self.tokens[m].load(Ordering::SeqCst) != generation
+                || self.loading[m]
+            {
+                self.reply(&c.request_id, Some("sync_master_changed"));
+                return;
+            }
+            let master = &self.decks[m];
+            if let (Some(mg), Some(grid)) = (&master.beat_grid, &self.decks[c.deck].beat_grid) {
+                if (mg.bpm * master.rate / grid.bpm - c.rate).abs() > 1e-8 {
+                    self.reply(&c.request_id, Some("sync_master_changed"));
+                    return;
+                }
+            }
+            let now = master
+                .stream
+                .as_ref()
+                .map(|v| {
+                    v.position_frames.load(Ordering::Relaxed) as f64 / master.sample_rate as f64
+                })
+                .unwrap_or(old_position);
+            // The prepared queue already contains tempo-processed PCM. Discard only
+            // the elapsed master media interval on the control thread at commit.
+            let target = c.prepared.state.position_frames.load(Ordering::Relaxed) as f64
+                / c.prepared.sample_rate as f64
+                + (now - old_position) * c.rate / master.rate;
+            if !c.prepared.source.advance_to(target) {
+                self.reply(&c.request_id, Some("sync_preparation_too_slow"));
+                return;
+            }
+        }
+        let prior_grid = if c.analyze {
+            None
+        } else {
+            self.decks[c.deck].beat_grid.clone()
+        };
         let Prepared {
             source,
             state,
@@ -339,6 +531,10 @@ impl Engine {
             generation: c.generation,
             ended: false,
             stream: Some(state),
+            rate: c.rate,
+            pitch_lock: c.pitch_lock,
+            beat_grid: prior_grid,
+            synced: c.sync_master.is_some(),
         };
         self.levels();
         if c.resume {
@@ -356,6 +552,18 @@ impl Engine {
         let token = self.wave_tokens[i].clone();
         let tx = tx.clone();
         thread::spawn(move || {
+            if let Ok(metadata) =
+                deck_craft_audio::analysis::inspect_with_cancel(&c.path, &c.identity, || {
+                    token.load(Ordering::SeqCst) != c.generation
+                })
+            {
+                let _ = tx.send(Message::Analysis {
+                    deck: i,
+                    generation: c.generation,
+                    track_id: c.track_id.clone(),
+                    metadata,
+                });
+            }
             let Ok(decoder) = checked_file(&c.path, &c.identity).and_then(decode) else {
                 return;
             };
@@ -396,16 +604,17 @@ fn main() {
     if std::env::args().nth(1).as_deref() == Some("--inspect") {
         let result = std::panic::catch_unwind(|| -> Result<Value, &'static str> {
             let frame = read_frame(&mut io::stdin().lock())
-                .map_err(|_| "invalid_request")?.ok_or("invalid_request")?;
+                .map_err(|_| "invalid_request")?
+                .ok_or("invalid_request")?;
             let request: Request = serde_json::from_slice(&frame).map_err(|_| "invalid_request")?;
             validate(&request.command)?;
             if let Command::Load { path, identity, .. } = request.command {
-                let mut decoder = decode(checked_file(&path, &identity)?)?;
-                let metadata = json!({"duration":decoder.total_duration().unwrap().as_secs_f64(),"channels":decoder.channels().get(),"sampleRate":decoder.sample_rate().get()});
-                if decoder.next().is_none() { return Err("unsupported_or_corrupt_audio"); }
-                Ok(metadata)
-            } else { Err("invalid_command") }
-        }).unwrap_or(Err("decoder_failed"));
+                deck_craft_audio::analysis::inspect(&path, &identity)
+            } else {
+                Err("invalid_command")
+            }
+        })
+        .unwrap_or(Err("decoder_failed"));
         let reply = match result {
             Ok(metadata) => json!({"ok":true,"metadata":metadata}),
             Err(error) => json!({"ok":false,"error":error}),
@@ -454,6 +663,10 @@ fn main() {
                 generation: 0,
                 ended: false,
                 stream: None,
+                rate: 1.0,
+                pitch_lock: true,
+                beat_grid: None,
+                synced: false,
             }
         })
         .collect();
@@ -476,6 +689,8 @@ fn main() {
         resources: Vec::new(),
         engine_id,
         sequence: 0,
+        master: None,
+        sync_pending: [None; 4],
     };
     engine.levels();
     let (tx, rx) = mpsc::channel();
@@ -522,6 +737,20 @@ fn main() {
                 }
             }
             Ok(Message::Candidate(c)) => engine.candidate(c, &tx),
+            Ok(Message::Analysis {
+                deck,
+                generation,
+                track_id,
+                metadata,
+            }) => {
+                if engine.decks[deck].track_id.as_ref() == Some(&track_id)
+                    && engine.wave_tokens[deck].load(Ordering::SeqCst) == generation
+                {
+                    engine.decks[deck].beat_grid =
+                        serde_json::from_value(metadata["beatGrid"].clone()).ok();
+                    engine.send("analysis",json!({"deck":(["A","B","C","D"][deck]),"trackId":track_id,"loadGeneration":generation,"metadata":metadata}));
+                }
+            }
             Ok(Message::Wave {
                 deck,
                 generation,

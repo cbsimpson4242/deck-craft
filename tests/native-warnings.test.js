@@ -107,7 +107,7 @@ test('MOCKED native bridge warnings reach the real renderer DOM', async t => {
       const calls=await evaluate('warningFixture.calls.length');
       for(const layout of ['perform','prepare']) {
         await evaluate(`document.querySelector('[data-action="mode"][data-value="${layout}"]').click()`);
-        const geometry=await evaluate(`(()=>{const p=document.querySelector('.local-library'),t=p.querySelector('.table-wrap'),f=p.querySelector('.library-feedback');return {rows:p.querySelectorAll('tr[data-track-id]:not([hidden])').length,removed:p.querySelectorAll('.library-toolbar,.library-imports,.library-navigation,.library-selection,.load-choice').length,gap:t.getBoundingClientRect().top-p.querySelector('.library-main').getBoundingClientRect().top,statusHeight:f.getBoundingClientRect().height,load:p.querySelector('tr:not([hidden]) .load').disabled};})()`);
+        const geometry=await evaluate(`(()=>{const p=document.querySelector('.local-library'),t=p.querySelector('.table-wrap'),f=p.querySelector('.library-feedback');return {rows:p.querySelectorAll('tr[data-track-id]:not([hidden])').length,removed:p.querySelectorAll('.library-toolbar,.library-imports,.library-navigation,.library-selection,.load-choice').length,gap:t.getBoundingClientRect().top-p.querySelector('.library-main').getBoundingClientRect().top,statusHeight:f.getBoundingClientRect().height,load:!p.querySelector('tr[data-track-id]:not([hidden])').draggable};})()`);
         assert.equal(geometry.rows,2,layout);assert.equal(geometry.removed,0);assert.ok(geometry.gap<=1,JSON.stringify(geometry));assert.equal(geometry.statusHeight,0);assert.equal(geometry.load,false);geometries.push({layout,...geometry});
         if(evidence){const image=await call('Page.captureScreenshot',{format:'png'});await writeFile(path.join(evidence,'local-library-'+layout+'.png'),Buffer.from(image.data,'base64'));}
       }
@@ -120,8 +120,8 @@ test('MOCKED native bridge warnings reach the real renderer DOM', async t => {
       const after=await evaluate("JSON.parse(localStorage.getItem('deck-craft.ui.v1'))");
       assert.deepEqual(after.library,stored.library);assert.deepEqual(after.decks,stored.decks);assert.deepEqual(after.mixer,stored.mixer);
       assert.equal(await evaluate('warningFixture.calls.length'),calls,'layout/canvas render must not issue native commands');
-      await evaluate("document.querySelector('.local-library tr:not([hidden]) .load').click()");
-      await until(()=>evaluate("warningFixture.requests.some(r=>r.type==='load'&&r.deck==='D')"),'row load into retained target D');
+      await evaluate("document.querySelector('.local-library tr[data-track-id]:not([hidden])').dispatchEvent(new KeyboardEvent('keydown',{key:'d',altKey:true,bubbles:true}))");
+      await until(()=>evaluate("warningFixture.requests.some(r=>r.type==='load'&&r.deck==='D')"),'Alt+D row load into deck D');
       assert.equal(await evaluate("JSON.parse(localStorage.getItem('deck-craft.ui.v1')).decks.D.playing"),false);
       await evaluate("warningFixture.emit(undefined,false)");
       // Global import still works; progress/status paints must not require removed controls.

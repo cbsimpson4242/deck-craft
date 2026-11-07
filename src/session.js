@@ -2,7 +2,7 @@ import { DEFAULT_LAYOUT, DEFAULT_THEME, DECK_IDS, LAYOUTS, LEGACY_LAYOUTS, THEME
 import { MIXER_VALUE_FIELDS } from './mixer.js';
 
 const LIMITS = {pitch:[-8,8],gain:[0,100],hi:[0,100],mid:[0,100],low:[0,100],filter:[0,100],level:[0,100]};
-const FLAGS = ['playing','sync','headphone','loopEnabled'];
+const FLAGS = ['playing','sync','headphone','loopEnabled','pitchLock'];
 export const EQ_BANDS = ['hi','mid','low'];
 export const ASSIGNMENTS = ['left','thru','right'];
 /** A and B keep their crossfader sides; C and D stay direct until assigned (the pre-assignment behavior). */
@@ -19,10 +19,10 @@ const object = value => value !== null && typeof value === 'object' && !Array.is
 const own = (obj,key) => Object.prototype.hasOwnProperty.call(obj,key);
 
 function initialDeck(track,id) {
-  return {trackId:track.id,position:92.4,playing:false,cues:[0,48,136,208],loopLength:8,loopEnabled:false,pitch:0,sync:false,headphone:false,gain:50,hi:50,mid:50,low:50,filter:50,level:78,assign:DEFAULT_ASSIGN[id],eqRestore:{hi:null,mid:null,low:null}};
+  return {trackId:track.id,position:92.4,playing:false,cues:[0,48,136,208],loopLength:8,loopEnabled:false,pitch:0,pitchLock:true,sync:false,headphone:false,gain:50,hi:50,mid:50,low:50,filter:50,level:78,assign:DEFAULT_ASSIGN[id],eqRestore:{hi:null,mid:null,low:null}};
 }
 export function createSession() {
-  return {version:1,layout:DEFAULT_LAYOUT,theme:DEFAULT_THEME,decks:Object.fromEntries(DECK_IDS.map((id,i)=>[id,initialDeck(TRACKS[i],id)])),mixer:{crossfader:50,effects:{echo:{enabled:false,wet:25},space:{enabled:false,wet:20}}},library:{query:'',crate:'all',target:'A',dense:false,sort:'title'},mode:'perform',pair:'ab'};
+  return {version:1,layout:DEFAULT_LAYOUT,theme:DEFAULT_THEME,decks:Object.fromEntries(DECK_IDS.map((id,i)=>[id,initialDeck(TRACKS[i],id)])),mixer:{crossfader:50,effects:{echo:{enabled:false,wet:25},space:{enabled:false,wet:20}}},library:{query:'',crate:'all',target:'A',dense:false,sort:'title'},mode:'perform',pair:'ab',master:null};
 }
 
 /** One semantic session. A layout transition changes presentation only. */
@@ -37,6 +37,12 @@ export function reduceSession(state,action) {
         const position=clamp(native.position,0,trackById(old.trackId).duration);
         if(position!==old.position||native.playing!==old.playing)next={...old,position,playing:native.playing};
       }
+      if(snap.ready&&native&&native.trackId===old.trackId){
+        // Tempo, pitch lock and sync are engine receipts for the loaded source (never mixer-restore state).
+        if(finite(native.rate)&&native.rate>=0.92&&native.rate<=1.08){const pitch=Math.round((native.rate-1)*100000000)/1000000;if(pitch!==next.pitch)next={...next,pitch};}
+        if(typeof native.pitchLock==='boolean'&&native.pitchLock!==next.pitchLock)next={...next,pitchLock:native.pitchLock};
+        if(typeof native.synced==='boolean'&&native.synced!==next.sync)next={...next,sync:native.synced};
+      }
       // Native receipts own every channel-strip value once the saved ones have been restored to the
       // engine (`mixer:false` marks the restore window, where the engine still reports its defaults).
       if(snap.ready&&native&&action.mixer!==false)for(const field of MIXER_VALUE_FIELDS)
@@ -48,8 +54,10 @@ export function reduceSession(state,action) {
       if(next!==old){decks[id]=next;changed=true;}
     }
     const mixer=snap.ready&&action.mixer!==false&&finite(snap.crossfader)&&snap.crossfader>=0&&snap.crossfader<=100&&snap.crossfader!==state.mixer.crossfader?{...state.mixer,crossfader:snap.crossfader}:state.mixer;
-    return changed||mixer!==state.mixer?{...state,decks,mixer}:state;
+    const master=snap.ready&&DECK_IDS.includes(snap.master)?snap.master:state.master;
+    return changed||mixer!==state.mixer||master!==state.master?{...state,decks,mixer,master}:state;
   }
+  if(action.type==='master')return DECK_IDS.includes(action.deck)?{...state,master:action.deck}:state;
   if (action.type === 'layout') return validLayout(action.value) && action.value !== state.layout ? {...state,layout:action.value} : state;
   if (action.type === 'theme') return validTheme(action.value) && action.value !== state.theme ? {...state,theme:action.value} : state;
   if (action.type === 'mode') return ['perform','prepare'].includes(action.value) ? {...state,mode:action.value} : state;
@@ -117,6 +125,7 @@ export function restoreSession(text) {
   if(!object(saved)||saved.version!==1) return {state:initial,recovered:true};
   let recovered=false;
   const state={...initial};
+  if(DECK_IDS.includes(saved.master))state.master=saved.master;
   if(validLayout(saved.layout)) state.layout=saved.layout; else if(!LEGACY_LAYOUTS.includes(saved.layout)) recovered=true;
   if(validTheme(saved.theme)) state.theme=saved.theme;
   if(['perform','prepare'].includes(saved.mode)) state.mode=saved.mode;
@@ -127,7 +136,7 @@ export function restoreSession(text) {
     const track=trackById(raw.trackId);if(!track){recovered=true;continue;}
     let deck={...initial.decks[id],trackId:track.id};
     if(finite(raw.position)) deck.position=clamp(raw.position,0,track.duration);else recovered=true;
-    for(const field of ['sync','headphone','loopEnabled']) if(typeof raw[field]==='boolean') deck[field]=raw[field];
+    for(const field of ['sync','headphone','loopEnabled','pitchLock']) if(typeof raw[field]==='boolean') deck[field]=raw[field];
     for(const [field,[min,max]] of Object.entries(LIMITS)) if(finite(raw[field])) deck[field]=clamp(raw[field],min,max);
     if(own(raw,'assign')) {if(ASSIGNMENTS.includes(raw.assign))deck.assign=raw.assign;else recovered=true;}
     if(object(raw.eqRestore))deck.eqRestore=Object.fromEntries(EQ_BANDS.map(b=>[b,deck[b]===0?remembered(raw.eqRestore[b]):null]));

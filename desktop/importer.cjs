@@ -14,10 +14,10 @@ function inspectAudio(binary, record) {
       settled = true; clearTimeout(timer);
       if (error) { child.kill("SIGKILL"); reject(Error(error)); } else resolve(value);
     };
-    const timer = setTimeout(() => done("audio_inspection_timed_out"), 10000);
+    const timer = setTimeout(() => done("audio_inspection_timed_out"), 30000);
     child.stdout.on("data", chunk => {
       text += chunk.toString("utf8");
-      if (Buffer.byteLength(text) > 8192) done("invalid_audio_metadata");
+      if (Buffer.byteLength(text) > 32768) done("invalid_audio_metadata");
     });
     child.stderr.on("data", () => {});
     child.on("error", () => done("audio_engine_unavailable"));
@@ -61,7 +61,7 @@ async function importSelection(library, paths, { inspect, folder = false, progre
     try {
       record = await library.select(filename);
       const known = Number.isFinite(record.duration);
-      const track = known ? library.list().find(t => t.id === record.id) : library.commit(record.id, await inspect(record));
+      const track = known && record.analysisVersion===1 ? library.list().find(t => t.id === record.id) : library.commit(record.id, await inspect(record));
       tracks.set(track.id, track);
       if (known) existing++; else added++;
     } catch (error) {

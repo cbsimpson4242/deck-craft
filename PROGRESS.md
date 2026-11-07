@@ -1,5 +1,34 @@
 # Progress
 
+## Current: native mixer and browser audio on one console
+
+This merge keeps the deployed native console and the in-browser audio backend in the same source. The native engine still owns full-kill EQ, gain, the sweep filter, pre-crossfader stereo meters, L/THRU/R assignment, tempo ±8%, pitch lock and beat-phase sync. Waveform scrubbing follows the source clock through tempo and does not reload audio on a layout change. The browser backend is a separate engine used only when no native bridge is present: play, seek, cues, channel levels, the A/B crossfader, tempo, pitch lock where the browser supports it, and explicit master/Sync. Gain, EQ, the filter, meters, crossfader assignment, loops and FX stay disabled there and are labelled as browser limits. Demo fixtures stay silent on both real backends. The console UI regression runs twice: once with Web Audio removed, and once with the browser backend attached so those limits are checked on the rendered page. Real browser signal capture and the native signal, tempo and Electron lanes stay separate. Nothing here is a deployment.
+
+
+## Current: in-browser audio backend for the LAN preview
+
+`dist/deck-craft.html` now plays audio in a supporting browser instead of being UI-only. A browser backend implements the existing bridge contract with one media element per deck plus Web Audio gains, so the same session, five layouts, canvas, library, themes and persistence drive it. The native desktop bridge, when present, still owns everything and the browser backend never starts alongside it. See `docs/BROWSER-AUDIO.md`.
+
+Implemented: user-chosen multi-file/folder import with cancel and per-file errors; local decode for a 512-bin waveform, constant BPM/grid (ported native estimator, 200 Hz envelope) and ID3/FLAC/MP4 artwork; four-deck play/pause/seek measured from the media clock; levels and crossfader; tempo ±8% and pitch lock written to `playbackRate`/`preservesPitch` (reported off, and disabled, if unsupported); explicit master and Sync using measured media positions and iterated phase correction; fail-closed suspend/pagehide, no automatic replay, restores paused; bounded IndexedDB Blob storage with visible quota/session-only warnings; getRandomValues UUID fallback. Nothing requires a secure context. `NativeSession` now reads backend-specific wording from `src/backends.js` instead of hard-coding native labels.
+
+Limits: Chromium only was exercised; hardware latency is not measured and the Omarchy/Rust engine is not involved. EQ/FX/loops/key/meters/headphone routing remain disabled. The ported BPM estimator keeps the native half/double-tempo weakness, and sync drifts with BPM estimation error. Files over 64 MiB or 20 minutes, batches over 100 files or 256 MiB, and libraries over 500 tracks or 768 MiB are refused or kept session-only.
+
+Verification and evidence are recorded in the private evidence folder, not in public source.
+
+## Current: portable native preview for listening before deployment
+
+A standalone Linux archive bundles the reviewed app/native engine with a checksum-verified official Electron runtime. Extract and run `start-preview`; no install or normal-release switch is needed. Preview state and the instance lock live in a separate release-specific application config directory. The window title identifies the preview. Its local file picker and native playback use the real app, with no web audio proxy or music upload. Generated archives stay in ignored release output. Worker verification and target listening acceptance are separate. Verified on the remote worker from an extracted archive: all packaged payload files matched the preview manifest; the actual launcher booted; real Electron/native playback at +5% produced approximately 440 Hz locked and 462 Hz unlocked through an isolated sink; the separate default preview profile restored source/tempo/lock settings paused at the saved position and left a normal-library sentinel unchanged. Two preview-entry regressions, five installer tests and publication checks passed. Physical output/portal/latency acceptance remains for the user’s target desktop.
+
+## Current: library artwork, measured BPM, native tempo, beat sync and pitch lock
+
+The library no longer has a deck-assignment selector, far-right load arrow/column or selection checkboxes. Each row starts with its track’s embedded album thumbnail when available, otherwise a labeled fallback. Row click and keyboard selection preserve crate/playlist operations; drag/drop, Alt+A/B/C/D and deck Load controls load a selected local source paused. Playlist order controls remain available in playlists.
+
+Implemented: bounded offline onset analysis of up to the first 60 seconds, persisted 60–200 BPM constant-grid estimates with confidence and offset, an Analyze BPM / artwork action for existing library entries, sanitized 64×64 embedded JPEG/PNG thumbnails, native ±8% tempo, explicit master selection and beat-phase sync, and worker-side pitch-preserving waveform-similarity overlap-add (pitch lock on by default). Native sample/source positions and acknowledged rate/lock settings remain authoritative across all layouts and the canvas; restore remains paused. Sync compensates master movement during preparation and rejects missing grids, changed masters and out-of-range rates. Linked tempo follows the master; independent transport changes clear the affected Sync status so it must be explicitly re-established. Master transport changes also invalidate pending follower synchronization.
+
+Verified on an approved remote worker: 87 Node tests, 12 Rust tests, five installer tests, UI build/bundle syntax, optimized native build, browser regressions (25 layout transitions, 30 responsive and 50 theme/layout/width cases), canvas regressions, existing isolated native signal capture, new tempo/beat/artwork capture and native rejection checks, real Electron/native first-use/restart/offline phases, and publication checks. Captured tone frequency changes with unlocked tempo and stays near 440 Hz with pitch lock; signal-bearing durations follow the requested rate. Generated 120/126 BPM click tracks, phase alignment, paused seeks, independent decks and real FLAC embedded artwork persistence were checked. All device-facing tests used an explicit isolated sink, sequentially.
+
+Limits: this is a constant-grid estimator, not variable-tempo, downbeat or key analysis; half/double-tempo errors and weak/ambiguous tracks remain possible. The basic stretcher can produce transient artifacts. Isolated test-driver scheduling inserted short silent spans despite zero producer-ring underruns; those spans are recorded separately from signal-bearing duration, and the captures do not establish output reliability or hardware latency. One offline harness run exposed an import-settlement race; it now waits on the actual busy library control and the complete first/restore/offline rerun passed. No physical output, target portal or latency acceptance is claimed, and nothing has been deployed.
+
 ## Deployment: full-kill mixer on the current console
 
 The reconciled source `62c0c29` is installed user-locally on the Omarchy target as release `0.3.1-54bf39887176`, through the normal installer and checksum-verified pinned runtime. All 186 payload hashes and modes match, with no extra app files, and native shared dependencies resolve. Only the UI bundle, native engine, audio client and command policy differ from the previously installed console; the existing library/desktop backend is retained. The library is byte-identical, all existing app processes were preserved, and a private-state backup plus the preceding release remain available for rollback.
@@ -294,7 +323,7 @@ Implemented in the native preview:
 
 - `npm ci && npm run build:desktop && npm run desktop`: native development build.
 - `npm run package:desktop`: small Linux x86-64 app/native-engine package with verified official-runtime download at installation.
-- `npm run build`: browser-only UI artifact; still no audio outside the native bridge.
+- `npm run build`: browser artifact; plays local files through the in-browser backend when supported (`docs/BROWSER-AUDIO.md`), otherwise UI-only. `npm run test:browser-audio`: real-browser signal lane.
 - `docs/NATIVE-DESKTOP.md`: architecture, ownership, test setup and explicit acceptance limits.
 
 ## Previous milestone verification

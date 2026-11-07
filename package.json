@@ -20,7 +20,10 @@
     "test:rust": "cargo test --manifest-path native/Cargo.toml --locked --jobs 2",
     "test:native": "node scripts/native-integration.mjs",
     "test:desktop": "node scripts/desktop-test.mjs",
-    "package:desktop": "node scripts/desktop-package.mjs"
+    "package:desktop": "node scripts/desktop-package.mjs",
+    "test:tempo": "node scripts/tempo-integration.mjs",
+    "test:browser-audio": "node scripts/browser-audio-integration.mjs",
+    "package:preview": "python3 scripts/desktop-preview.py"
   },
   "devDependencies": {
     "electron": "45.0.0"

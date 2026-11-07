@@ -71,6 +71,16 @@ export function sampleWave(source,from,to,pixels) {
 // scrolling rulers follow the synthetic pulse grid or whole-second time ticks for local audio.
 export function waveRuler(track,source,scroll,from,to) {
   const marks=[],add=(u,strong)=>{if(u>=from&&u<=to)marks.push({u,strong});};
+  // A measured grid (native or browser analysis) marks real beats; every fourth is strong. Marks are
+  // limited to the visible interval and thinned so a full-track view stays bounded.
+  const grid=track.local?track.beatGrid:null;
+  if(grid&&grid.bpm>0&&track.duration>0){
+    const period=60/grid.bpm,lo=Math.max(0,from)*track.duration,hi=Math.min(1,to)*track.duration;
+    const stride=Math.max(1,Math.ceil((hi-lo)/period/400));
+    let i=Math.ceil((lo-grid.offset)/period/stride)*stride;
+    for(let t=grid.offset+i*period;t<=hi;i+=stride,t=grid.offset+i*period)if(t>=0)add(t/track.duration,((i%4)+4)%4===0);
+    return marks;
+  }
   if(!scroll){for(let i=0;i<=16;i++)add(i/16,i%4===0);return marks;}
   if(!track.local){let i=0;for(let k=0;k<SYNTHETIC_PULSES+2;k++){const u=(k-source.offset)/SYNTHETIC_PULSES;if(u>=0&&u<=1){add(u,i%4===0);i++;}}return marks;}
   const every=Math.max(10,Math.ceil(track.duration/120/10)*10);
@@ -153,7 +163,8 @@ export function paintWaveCanvas(canvas,track,viewport,{scroll=false,metrics=null
   const span=viewport.end-viewport.start,step=span/W,k0=Math.round(viewport.start/step),from=k0*step;
   // The deck hue comes from the active theme; reading it also makes a theme change repaint.
   const tint=metrics?.tint??(view.getComputedStyle?.(canvas).getPropertyValue('--deck')||'').trim();
-  const key=[source.id,W,H,k0,step.toPrecision(9),scroll?1:0,tint].join('|');
+  const grid=track.local&&track.beatGrid?track.beatGrid.bpm+':'+track.beatGrid.offset:'';
+  const key=[source.id,W,H,k0,step.toPrecision(9),scroll?1:0,tint,grid].join('|');
   if(painted.get(canvas)===key&&canvas.width===W&&canvas.height===H)return true;
   const ctx=canvas.getContext('2d');if(!ctx)return false;
   if(canvas.width!==W||canvas.height!==H){canvas.width=W;canvas.height=H;}
