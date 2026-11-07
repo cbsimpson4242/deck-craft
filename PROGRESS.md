@@ -1,5 +1,12 @@
 # Progress
 
+## Deployment: full-kill mixer on the current console
+
+The reconciled source `62c0c29` is installed user-locally on the Omarchy target as release `0.3.1-54bf39887176`, through the normal installer and checksum-verified pinned runtime. All 186 payload hashes and modes match, with no extra app files, and native shared dependencies resolve. Only the UI bundle, native engine, audio client and command policy differ from the previously installed console; the existing library/desktop backend is retained. The library is byte-identical, all existing app processes were preserved, and a private-state backup plus the preceding release remain available for rollback.
+
+The exact optimized package passed the native signal-capture lane, real Electron/native first-use, paused restoration and offline phases, and publication checks after the source gates below. The obsolete first candidate was never installed. Restart the already open app to load this release. New-release launch, target portal/file-chooser behavior, physical output and latency remain unverified. Detailed operational receipts remain outside public source.
+
+
 ## Current: full-kill EQ, native channel peak meters and crossfader assignment
 
 The mixer feature is reconciled with the current native console and its gain/sweep filter, waveform detail, wheel zoom and scrubbing, compact Settings, table library, drag loading and simpler Build canvas. The initial feature snapshot predated these changes; the installer preflight caught that difference before replacement, and the reconciled source retains the installed console's library/desktop fixes. Historical designs and approved.css remain unchanged.
