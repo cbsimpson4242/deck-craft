@@ -6,7 +6,7 @@ An open-source DJ application built around professional workflows, reliable perf
 
 **Current milestone: the approved reference-style deck face across every layout, over the customizable component canvas and Linux native desktop preview.** Assemble and style existing decks, mixer, browser and smaller parts; save reusable components/workspaces and export a self-contained AI-agent creator kit. Browse local files/folders, build crates and ordered playlists, and play/pause/seek through the separate Rust audio engine. All five approved layouts remain available over the same four-deck session.
 
-**Omarchy is the first target:** user-local installation and native Wayland window launch have been verified on the target desktop, with the native engine reporting audio ready. Full file-chooser/portal interaction, physical audible output and hardware latency still need acceptance there. This is not yet a Serato/Traktor replacement. EQ, FX, loops, sync, beat/key detection, time stretching, signal meters, headphone routing and controller integration are **not implemented**; those controls are disabled in the desktop app.
+**Omarchy is the first target:** user-local installation and native Wayland window launch have been verified on the target desktop, with the native engine reporting audio ready. Full file-chooser/portal interaction, physical audible output and hardware latency still need acceptance there. This is not yet a Serato/Traktor replacement. FX, loops, sync, beat/key detection, time stretching, headphone routing and controller integration are **not implemented**; those controls are disabled in the desktop app.
 
 ## Run the native desktop preview
 
@@ -29,6 +29,16 @@ The application opens an ordinary desktop window, not a browser tab. Choose **Ad
 - Tracks, collection names/membership/order, selected collection and sort choice survive restart. Deck restoration stays paused. Removing an entry or collection never deletes original music. A selected/loaded/loading track cannot be removed from the library until a different source is loaded into its decks, even when the audio output is unavailable or the engine has reconnected.
 - Audio output status appears above the workspace. A ready engine is not proof of audible speakers: load your own track and verify your system output. Library import/organization also works with an unavailable output device; transport remains disabled. Import still requires the installed native decoder.
 - Each import is bounded to 1,000 candidate audio files, 20,000 traversed entries and bounded folder depth. Symlinks are skipped. A summary reports duplicates, skipped/failed files and truncated batches; use smaller folders if the limit is reached. The library supports at most 200 collections and 20,000 total memberships, within the shared persistence budget below. Selection actions operate on up to 1,000 tracks at a time.
+
+### Channel mixer
+
+Each channel has native gain trim, High/Mid/Low EQ and a level fader. EQ 50 is neutral, 100 is +6 dB, and 0 fully kills that band's contribution. Click the HI, MID or LOW label to kill it; click again to restore its previous setting. Moving a killed knob restores it manually. These settings and kill memories survive restart; playback always restores paused.
+
+The EQ uses 24 dB/octave Linkwitz-Riley crossovers at 250 Hz and 2.5 kHz, with phase alignment for flat magnitude at neutral. Adjacent bands overlap at the crossovers: killing one band removes that band's output, not all energy at every nearby frequency. Killing all three produces digital silence after a short click-reducing ramp.
+
+Channel meters display actual native stereo peaks after trim, EQ and the channel fader, before the crossfader. They remain active for a playing channel faded out by the crossfader, and go dark on pause, end or disconnection. These are peak meters, not calibrated analog VU/loudness measurements.
+
+Use each channel's **L / R / THRU** buttons to follow the left side, right side, or bypass the crossfader. A starts on L, B on R; C/D keep their original THRU routing until assigned. All four channels can follow either side. Assignments are shared across layouts and saved with the session.
 
 The native engine uses Rodio/CPAL and a bounded PCM ring per deck. File reads, decoding and seek preparation happen on workers, not in the device-facing PCM iterator. Transport positions are based on native media frames consumed, not a browser animation timer. A requested 512-frame device buffer is not a measured hardware-latency guarantee.
 

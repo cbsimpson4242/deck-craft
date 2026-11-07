@@ -1,5 +1,6 @@
 import { DECK_IDS, trackById, registerLocalTrack, replaceLocalLibrary } from "./catalog.js";
 import { icon, timeLabel, paintWaveBox } from "./components.js";
+import { reduceSession, EQ_BANDS, ASSIGNMENTS } from "./session.js";
 
 const nativeErrors = {
   audio_output_unavailable: "The default audio output is unavailable. Check PipeWire and your output device, then reconnect audio.",
@@ -12,7 +13,18 @@ const nativeErrors = {
   seek_failed: "The decoder could not seek this file.",
   load_cancelled: "The pending load was cancelled.",
   audio_command_timed_out: "The audio engine stopped responding. Reconnect audio; playback will not restart automatically.",
+  invalid_eq: "That EQ value is outside the supported range.",
+  invalid_gain: "That gain value is outside the supported range.",
+  invalid_band: "That EQ band does not exist.",
+  invalid_assignment: "That crossfader assignment is not supported.",
 };
+/** Peak (linear, 1.0 = full scale) -> 0..1 bar height on a -54 .. +3 dB scale; anything unusable is silent. */
+export function meterFraction(peak) {
+  if (typeof peak !== "number" || !Number.isFinite(peak) || peak <= 0) return 0;
+  const db = 20 * Math.log10(Math.min(peak, 16));
+  return Math.max(0, Math.min(1, (db + 54) / 57));
+}
+const meterText = (peak) => (typeof peak === "number" && Number.isFinite(peak) && peak > 0 ? Math.round(20 * Math.log10(Math.min(peak, 16))) + " dB" : "silent");
 export async function restoreNativeCatalog(bridge) {
   if (!bridge) return;
   const result = await bridge.command({ type: "library" });
@@ -70,6 +82,8 @@ export class NativeSession {
       if (snapshot.sourceId) this.retiredSources.add(snapshot.sourceId);
       if (snapshot.engineId) this.retiredEngines.add(snapshot.engineId);
       for (const id of DECK_IDS) this.takeOwnership(id);
+      for (const timer of this.pending.values()) clearTimeout(timer);
+      this.pending.clear();
     } else {
       if (Number.isFinite(snapshot.seq) && snapshot.seq <= this.sequence) return;
       this.sequence = snapshot.seq || this.sequence;
@@ -79,10 +93,17 @@ export class NativeSession {
       this.status.ready !== snapshot.ready ||
       DECK_IDS.some((id) => !!this.status.decks.find((d) => d.id === id)?.loading !== !!snapshot.decks.find((d) => d.id === id)?.loading);
     this.status = snapshot;
-    this.store.dispatch({ type: "native-clock", snapshot });
+    // While a (re)connecting engine is still being configured it holds default mixer settings:
+    // transport/clock follow it, the user's mixer settings do not.
+    this.store.dispatch({ type: "native-clock", snapshot, mixer: this.initialized });
     const transportChanged = DECK_IDS.some((id) => before.decks[id].playing !== this.store.get().decks[id].playing);
     if (readyChanged || transportChanged) this.redraw();
     else this.paintClock();
+  }
+  /** Only an engine that reports the complete channel mixer gets live EQ, meters and assignments. */
+  get mixerSupported() {
+    const c = this.status.capabilities;
+    return !!c && c.channelEq === true && c.channelMeters === true && c.crossfaderAssign === true;
   }
   isRetired(snapshot) {
     return this.retiredSources.has(snapshot.sourceId) || this.retiredEngines.has(snapshot.engineId);
@@ -131,6 +152,13 @@ export class NativeSession {
       }
       for (const id of DECK_IDS) await this.call({ type: "level", deck: id, value: saved.decks[id].level });
       await this.call({ type: "crossfader", value: saved.mixer.crossfader });
+      if (this.mixerSupported)
+        for (const id of DECK_IDS) {
+          const d = saved.decks[id];
+          await this.call({ type: "gain", deck: id, value: d.gain });
+          for (const band of EQ_BANDS) await this.call({ type: "eq", deck: id, band, value: d[band] });
+          await this.call({ type: "assign", deck: id, side: d.assign });
+        }
       for (const id of DECK_IDS) {
         const d = saved.decks[id];
         if (!trackById(d.trackId)?.local) continue;
@@ -190,6 +218,8 @@ export class NativeSession {
       action.type === "cue" ||
       action.type === "hotCue" ||
       action.type === "mixer" ||
+      action.type === "assign" ||
+      action.type === "eq-kill" ||
       action.type === "fx" ||
       (action.type === "deck" &&
         [
@@ -212,7 +242,12 @@ export class NativeSession {
       this.say("Audio initialization is still in progress.");
       return true;
     }
-    if ((action.type === "deck" && ["position", "level"].includes(action.field)) || action.type === "mixer") {
+    if (action.type === "eq-kill") {
+      const key = action.deck + ":" + action.band;
+      clearTimeout(this.pending.get(key));
+      this.pending.delete(key);
+    }
+    if ((action.type === "deck" && ["position", "level", "gain", ...EQ_BANDS].includes(action.field)) || action.type === "mixer") {
       const key = action.type === "mixer" ? "crossfader" : action.deck + ":" + action.field;
       clearTimeout(this.pending.get(key));
       // A delayed gesture keeps its original owner, not the source present at fire time.
@@ -237,6 +272,26 @@ export class NativeSession {
     }
     if (action.type === "deck" && action.field === "level") {
       await this.call({ type: "level", deck, value: action.value });
+      return;
+    }
+    if (action.type === "assign" || action.type === "eq-kill" || (action.type === "deck" && ["gain", ...EQ_BANDS].includes(action.field))) {
+      if (!this.mixerSupported) throw Error("This audio engine has no channel mixer. Reinstall Deck Craft to update it.");
+      if (action.type === "assign") {
+        if (!ASSIGNMENTS.includes(action.value)) throw Error("That crossfader assignment is not supported.");
+        await this.call({ type: "assign", deck, side: action.value });
+      } else if (action.type === "eq-kill") {
+        // The band is silenced (or restored) natively first; only then is the remembered knob position stored.
+        const before = this.store.get(),
+          after = reduceSession(before, action);
+        const target = after.decks[deck][action.band];
+        if (target === before.decks[deck][action.band]) return;
+        await this.call({ type: "eq", deck, band: action.band, value: target });
+        this.store.dispatch({ type: "eq-memory", deck, band: action.band, value: after.decks[deck].eqRestore[action.band] });
+      } else {
+        if (!Number.isFinite(action.value)) throw Error("That mixer value is not a number.");
+        if (action.field === "gain") await this.call({ type: "gain", deck, value: action.value });
+        else await this.call({ type: "eq", deck, band: action.field, value: action.value });
+      }
       return;
     }
     if (action.type === "fx" || (action.type === "deck" && !["playing", "position"].includes(action.field)))
@@ -291,11 +346,54 @@ export class NativeSession {
         const seek = box.querySelector("input");
         if (seek && document.activeElement !== seek) seek.value = d.position;
       }
-      for (const input of document.querySelectorAll(`[data-deck="${id}"][data-field="level"]`))
-        if (document.activeElement !== input) input.value = d.level;
+      for (const field of ["level", "gain", ...EQ_BANDS]) {
+        for (const input of document.querySelectorAll(`[data-deck="${id}"][data-field="${field}"]`)) {
+          if (document.activeElement !== input) input.value = d[field];
+          const dial = input.closest(".knob")?.querySelector(".dial i");
+          if (dial) dial.style.transform = `rotate(${(d[field]-50)*2.7}deg)`;
+        }
+      }
+      for (const button of document.querySelectorAll(`[data-action="eq-kill"][data-deck="${id}"]`))
+        button.setAttribute("aria-pressed", String(d[button.dataset.band] === 0));
+      for (const button of document.querySelectorAll(`[data-action="assign"][data-deck="${id}"]`))
+        button.setAttribute("aria-pressed", String(d.assign === button.dataset.value));
     }
     for (const input of document.querySelectorAll('[data-action="crossfader"]'))
       if (document.activeElement !== input) input.value = state.mixer.crossfader;
+    this.paintMeters();
+  }
+  /** Channel meters come only from accepted native receipts; a channel that is not playing is dark. */
+  paintMeters() {
+    if (typeof document === "undefined") return;
+    const live = this.status.ready === true && this.status.terminal !== true && this.mixerSupported;
+    for (const id of DECK_IDS) {
+      const native = this.status.decks.find((d) => d.id === id);
+      const meter = native?.meter;
+      const on = live && native?.playing === true && !!meter && typeof meter === "object";
+      const peaks = on ? [meter.l, meter.r] : [0, 0];
+      for (const vu of document.querySelectorAll(`.vu[data-vu-deck="${id}"]`)) {
+        const bars = vu.querySelectorAll("i");
+        peaks.forEach((peak, i) => {
+          const bar = bars[i];
+          if (!bar) return;
+          const fraction = meterFraction(peak).toFixed(3);
+          if (bar.dataset.level !== fraction) {
+            bar.dataset.level = fraction;
+            bar.style.setProperty("--meter", fraction);
+          }
+          const clip = String(on && typeof peak === "number" && peak > 1);
+          if (bar.dataset.clip !== clip) bar.dataset.clip = clip;
+        });
+        const live_ = String(on);
+        if (vu.dataset.live !== live_) vu.dataset.live = live_;
+        const label = !this.mixerSupported
+          ? `Channel ${id} meter: unavailable from this audio engine`
+          : on
+            ? `Channel ${id} meter: ${meterText(peaks[0])} left, ${meterText(peaks[1])} right, after EQ and fader`
+            : `Channel ${id} meter: silent`;
+        if (vu.getAttribute("aria-label") !== label) vu.setAttribute("aria-label", label);
+      }
+    }
   }
   paint() {
     if (typeof document === "undefined") return;
@@ -326,13 +424,19 @@ export class NativeSession {
     for (const el of document.querySelectorAll(".engine-label")) el.textContent = ready ? "NATIVE AUDIO" : "OUTPUT OFFLINE";
     const version = document.querySelector(".wordmark small");
     if (version) version.textContent = "0.3.1";
-    for (const el of document.querySelectorAll(".mobile-engine-notice")) el.textContent = "NATIVE FILE PLAYBACK · ADVANCED DSP PENDING";
+    for (const el of document.querySelectorAll(".mobile-engine-notice")) el.textContent = "NATIVE PLAYBACK · EQ AND METERS · FX PENDING";
     for (const el of document.querySelectorAll(
-      '[data-field="sync"],[data-field="headphone"],[data-field="loopEnabled"],[data-field="pitch"],[data-action="loop-size"],[data-action="loop-length"],[data-action="toggle-fx"],[data-action="fx-wet"],[data-field="gain"],[data-field="hi"],[data-field="mid"],[data-field="low"],[data-field="filter"]',
+      '[data-field="sync"],[data-field="headphone"],[data-field="loopEnabled"],[data-field="pitch"],[data-action="loop-size"],[data-action="loop-length"],[data-action="toggle-fx"],[data-action="fx-wet"],[data-field="filter"]',
     )) {
       el.disabled = true;
       el.title = "Not implemented in this first audio milestone";
     }
+    // Channel gain, EQ (with kill) and crossfader assignment are real DSP when the engine reports them.
+    const mixerOn = ready && this.initialized && this.mixerSupported;
+    for (const el of document.querySelectorAll(
+      '[data-field="gain"],[data-field="hi"],[data-field="mid"],[data-field="low"],[data-action="eq-kill"],[data-action="assign"]',
+    ))
+      el.disabled = !mixerOn;
     for (const el of document.querySelectorAll('[data-field="playing"]')) {
       const d = state.decks[el.dataset.deck];
       el.disabled =
@@ -343,10 +447,6 @@ export class NativeSession {
       el.setAttribute("aria-label", (d.playing ? "Pause" : "Play") + " deck " + el.dataset.deck);
     }
     for (const el of document.querySelectorAll(".fx-trailing")) el.textContent = "FX NOT IMPLEMENTED";
-    for (const el of document.querySelectorAll(".vu")) {
-      el.setAttribute("aria-label", "Audio meters not implemented");
-      el.title = "Audio meters not implemented";
-    }
     for (const el of document.querySelectorAll(".rail-bottom")) el.textContent = "Local audio only · no uploads";
     for (const el of document.querySelectorAll(".load-choice>span")) el.textContent = "Local files play; demo rows are fixtures";
     for (const el of document.querySelectorAll(".rail-heading.second")) el.textContent = "LOCAL + DEMO COLLECTION";
@@ -373,16 +473,16 @@ export class NativeSession {
     const footer = document.querySelector(".statusbar>span");
     if (footer)
       footer.textContent = ready
-        ? "Native audio · local files · EQ / FX / sync / headphone routing not implemented"
+        ? "Native audio · local files · gain, 3-band EQ, meters and crossfader assignment · FX / sync / headphone routing not implemented"
         : "Audio offline · playback is paused";
     const info = document.querySelector(".info-dialog");
     if (info && !info.dataset.native) {
       info.dataset.native = "true";
       info.innerHTML =
-        '<h2>Deck Craft · native audio foundation</h2><p>Five layouts share one four-deck session. Local files are decoded and played by a separate Rust engine using Rodio and CPAL through the default Linux audio device.</p><p>Play, pause, seek, manual cue points, channel levels and the A/B crossfader use native audio. Imported waveforms come from decoded PCM; BPM, key, beat grids, time stretching, loops, EQ, effects, meters, controller support and headphone routing are not implemented yet.</p><p>No network service or music upload. Restored transport is always paused. Device latency has not been benchmarked.</p><button class="dialog-close" data-action="close-info">Back to the decks</button>';
+        '<h2>Deck Craft · native audio foundation</h2><p>Five layouts share one four-deck session. Local files are decoded and played by a separate Rust engine using Rodio and CPAL through the default Linux audio device.</p><p>Play, pause, seek, manual cue points, channel gain, a three-band EQ with full kill, channel faders, post-fader peak meters and a per-channel left / thru / right crossfader assignment use native audio. Imported waveforms come from decoded PCM; BPM, key, beat grids, time stretching, loops, the filter, effects, controller support and headphone routing are not implemented yet.</p><p>No network service or music upload. Restored transport is always paused. Device latency has not been benchmarked.</p><button class="dialog-close" data-action="close-info">Back to the decks</button>';
     }
     const mixerInfo = document.querySelector(".mixer-dialog>p");
-    if (mixerInfo) mixerInfo.textContent = "Native levels and A/B crossfader · EQ, FX and headphone cue not implemented";
+    if (mixerInfo) mixerInfo.textContent = "Native gain, EQ with band kill, faders, meters and crossfader assignment · filter, FX and headphone cue not implemented";
     const about = document.querySelector(".footer-info");
     if (about) about.textContent = "About / audio";
     this.paintClock();

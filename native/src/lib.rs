@@ -1,3 +1,4 @@
+pub mod dsp;
 pub mod stream;
 use rodio::{Decoder, Source};
 use serde::{Deserialize, Serialize};
@@ -50,6 +51,22 @@ pub enum Command {
         deck: String,
         value: f64,
     },
+    /// Channel gain trim before the EQ (0..=100, 50 neutral, 0 mutes).
+    Gain {
+        deck: String,
+        value: f64,
+    },
+    /// One EQ band (`hi`, `mid`, `low`): 0..=100, 50 neutral, exactly 0 removes the band.
+    Eq {
+        deck: String,
+        band: String,
+        value: f64,
+    },
+    /// Which side of the crossfader the channel follows: `left`, `thru` or `right`.
+    Assign {
+        deck: String,
+        side: String,
+    },
     Crossfader {
         value: f64,
     },
@@ -70,6 +87,14 @@ pub fn deck_index(deck: &str) -> Result<usize, &'static str> {
         _ => Err("invalid_deck"),
     }
 }
+pub fn band_index(band: &str) -> Result<usize, &'static str> {
+    match band {
+        "low" => Ok(0),
+        "mid" => Ok(1),
+        "hi" => Ok(2),
+        _ => Err("invalid_band"),
+    }
+}
 pub fn validate(command: &Command) -> Result<(), &'static str> {
     match command {
         Command::Status | Command::Shutdown => Ok(()),
@@ -87,6 +112,25 @@ pub fn validate(command: &Command) -> Result<(), &'static str> {
                 return Err("invalid_level");
             }
             Ok(())
+        }
+        Command::Gain { deck, value } => {
+            deck_index(deck)?;
+            if !value.is_finite() || !(0.0..=100.0).contains(value) {
+                return Err("invalid_gain");
+            }
+            Ok(())
+        }
+        Command::Eq { deck, band, value } => {
+            deck_index(deck)?;
+            band_index(band)?;
+            if !value.is_finite() || !(0.0..=100.0).contains(value) {
+                return Err("invalid_eq");
+            }
+            Ok(())
+        }
+        Command::Assign { deck, side } => {
+            deck_index(deck)?;
+            dsp::Side::parse(side).map(|_| ())
         }
         Command::Crossfader { value } => {
             if !value.is_finite() || !(0.0..=100.0).contains(value) {
@@ -248,6 +292,44 @@ mod tests {
             })
             .is_ok()
         );
+    }
+    #[test]
+    fn mixer_commands_are_strict_and_bounded() {
+        let parse = |text: &str| serde_json::from_str::<Request>(text);
+        let eq = |deck: &str, band: &str, value: f64| Command::Eq { deck: deck.into(), band: band.into(), value };
+        for band in ["hi", "mid", "low"] {
+            for value in [0.0, 0.5, 50.0, 100.0] {
+                assert!(validate(&eq("A", band, value)).is_ok(), "{band} {value}");
+            }
+            assert_eq!(validate(&eq("A", band, -0.001)), Err("invalid_eq"));
+            assert_eq!(validate(&eq("A", band, 100.001)), Err("invalid_eq"));
+            assert_eq!(validate(&eq("A", band, f64::NAN)), Err("invalid_eq"));
+            assert_eq!(validate(&eq("A", band, f64::INFINITY)), Err("invalid_eq"));
+            assert_eq!(validate(&eq("Z", band, 50.0)), Err("invalid_deck"));
+        }
+        for band in ["HI", "high", "bass", "", "filter", "gain"] {
+            assert_eq!(validate(&eq("B", band, 50.0)), Err("invalid_band"), "{band:?}");
+        }
+        let gain = |value: f64| Command::Gain { deck: "C".into(), value };
+        assert!(validate(&gain(0.0)).is_ok() && validate(&gain(100.0)).is_ok());
+        assert_eq!(validate(&gain(100.5)), Err("invalid_gain"));
+        assert_eq!(validate(&gain(f64::NEG_INFINITY)), Err("invalid_gain"));
+        for deck in ["A", "B", "C", "D"] {
+            for side in ["left", "thru", "right"] {
+                assert!(validate(&Command::Assign { deck: deck.into(), side: side.into() }).is_ok());
+            }
+        }
+        for side in ["Left", "both", "", "master", "right "] {
+            assert_eq!(validate(&Command::Assign { deck: "A".into(), side: side.into() }), Err("invalid_assignment"), "{side:?}");
+        }
+        assert_eq!(validate(&Command::Assign { deck: "E".into(), side: "left".into() }), Err("invalid_deck"));
+        assert!(parse(r#"{"id":"x","command":{"type":"eq","deck":"A","band":"hi","value":0}}"#).is_ok());
+        assert!(parse(r#"{"id":"x","command":{"type":"eq","deck":"A","band":"hi","value":"0"}}"#).is_err());
+        assert!(parse(r#"{"id":"x","command":{"type":"eq","deck":"A","band":"hi"}}"#).is_err());
+        assert!(parse(r#"{"id":"x","command":{"type":"eq","deck":"A","band":"hi","value":1,"extra":true}}"#).is_err());
+        assert!(parse(r#"{"id":"x","command":{"type":"assign","deck":"A","side":"left","path":"/x"}}"#).is_err());
+        assert!(parse(r#"{"id":"x","command":{"type":"gain","deck":"A","value":null}}"#).is_err());
+        assert!(parse(r#"{"id":"x","command":{"type":"assign","deck":"A","side":1}}"#).is_err());
     }
     #[test]
     fn strict_semantic_schema() {

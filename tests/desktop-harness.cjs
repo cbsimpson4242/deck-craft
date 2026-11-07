@@ -207,6 +207,28 @@ async function run() {
     );
     await js("document.querySelector('section.deck[data-deck=A] [data-field=playing]').click()");
     await until(async () => (await command({ type: "status" })).snapshot.decks[0].playing, "actual native play from UI");
+    await js("document.querySelector('[data-action=open-mixer]').click()");
+    const strip = ".mixer-dialog ";
+    const setBand = async (band,value) => {
+      await js(`{const x=document.querySelector('.mixer-dialog [data-deck=A][data-field="${band}"]');x.value=${value};x.dispatchEvent(new Event('input',{bubbles:true}));}`);
+      await until(async()=>(await command({type:"status"})).snapshot.decks[0][band]===value,"native "+band+" knob");
+    };
+    await setBand("hi",71);
+    await js("document.querySelector('.mixer-dialog [data-action=eq-kill][data-deck=A][data-band=hi]').click()");
+    await until(async()=>(await command({type:"status"})).snapshot.decks[0].hi===0,"label full kill");
+    await until(()=>js("document.querySelector('.mixer-dialog [data-action=eq-kill][data-deck=A][data-band=hi]').getAttribute('aria-pressed')==='true'"),"kill visual state");
+    await js("document.querySelector('.mixer-dialog [data-action=eq-kill][data-deck=A][data-band=hi]').click()");
+    await until(async()=>(await command({type:"status"})).snapshot.decks[0].hi===71,"label restores prior knob");
+    await setBand("hi",50);
+    await until(()=>js("parseFloat(getComputedStyle(document.querySelector('.mixer-dialog [data-vu-deck=A] i')).height)>0"),"actual meter has nonzero rendered height");
+    for(const deck of ["A","B","C","D"]){
+      await js(`document.querySelector('.mixer-dialog [data-action=assign][data-deck=${deck}][data-value=right]').click()`);
+      await until(async()=>(await command({type:"status"})).snapshot.decks.find(d=>d.id===deck).assign==="right","UI assignment "+deck);
+    }
+    await js("document.querySelector('.mixer-dialog [data-action=assign][data-deck=A][data-value=left]').click()");
+    await until(async()=>(await command({type:"status"})).snapshot.decks[0].assign==="left","restore A routing");
+    await js("document.querySelector('[data-action=close-mixer]').click()");
+    checks.push("Real mixer UI: kill/restore native EQ, visible signal meter, all four crossfader assignments");
     const start = (await command({ type: "status" })).snapshot;
     const layouts = ["signal-one", "signal-wide", "studio-grid", "studio-linear", "studio-sync"];
     let transitions = 0;
@@ -257,7 +279,7 @@ async function run() {
     s = await session();
     await fs.writeFile(
       path.join(dir, "expected.json"),
-      JSON.stringify({ trackId: idA, position: s.decks.A.position, cues: s.decks.A.cues, engineId: start.engineId, ...libraryExpected }),
+      JSON.stringify({ trackId: idA, position: s.decks.A.position, cues: s.decks.A.cues, engineId: start.engineId, assignments:Object.values(s.decks).map(d=>d.assign), ...libraryExpected }),
     );
     const image = await window.webContents.capturePage();
     await fs.writeFile(path.join(dir, "desktop.png"), image.toPNG());
@@ -272,6 +294,8 @@ async function run() {
     assert.equal(s.layout, "studio-linear");
     assert.deepEqual(s.decks.A.cues, expected.cues);
     assert.notEqual(native.engineId, expected.engineId);
+    assert.deepEqual(native.decks.map(d=>d.assign),expected.assignments);
+    assert.ok(native.decks.every(d=>d.meter.l===0&&d.meter.r===0));
     assert.ok(native.decks.every((d) => !d.playing));
     assert.equal(s.decks.B.trackId, expected.trackId);
     checks.push("Complete app restart restores layout, local tracks, positions and cues, but never starts playback");

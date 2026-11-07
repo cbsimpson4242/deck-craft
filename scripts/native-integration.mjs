@@ -215,6 +215,37 @@ try {
   assert.equal(peaks?.length, 512);
   assert.ok(peaks.some((p) => p > 0.1));
   checks.push("Waveform peaks are computed from decoded PCM");
+  await audio.request({ type: "pause", deck: "A" });
+  for (const id of ["A", "B", "C", "D"]) {
+    const idx = ["A","B","C","D"].indexOf(id);
+    await audio.request({type:"load",deck:id,trackId:record.id,path:record.path,identity:record.identity});
+    await audio.request({type:"assign",deck:id,side:"left"});
+    await audio.request({type:"crossfader",value:0});
+    await audio.request({type:"play",deck:id});
+    await delay(650);
+    let snap = await audio.request({type:"status"});
+    const baseline = rms(latest());
+    assert.ok(baseline > .005, id+" assigned left has captured audio: "+baseline);
+    assert.ok(snap.decks[idx].meter.l > .05, id+" native meter reads actual signal");
+    for (const band of ["hi","mid","low"]) await audio.request({type:"eq",deck:id,band,value:0});
+    await delay(750);
+    assert.ok(rms(latest()) < .0001, id+" all band kills produce captured silence");
+    snap = await audio.request({type:"status"});
+    assert.ok(snap.decks[idx].meter.l < .03, id+" meter follows EQ kill");
+    for (const band of ["hi","mid","low"]) await audio.request({type:"eq",deck:id,band,value:50});
+    await audio.request({type:"assign",deck:id,side:"right"});
+    await delay(700);
+    assert.ok(rms(latest()) < .0001, id+" right assignment mutes at left endpoint");
+    snap = await audio.request({type:"status"});
+    assert.ok(snap.decks[idx].meter.l > .05, id+" pre-crossfader meter stays live while faded out");
+    await audio.request({type:"crossfader",value:100});
+    await delay(650);
+    assert.ok(rms(latest()) > .005, id+" right assignment audible at right endpoint");
+    await audio.request({type:"pause",deck:id});
+    snap=await audio.request({type:"status"});
+    assert.deepEqual(snap.decks[idx].meter,{l:0,r:0},id+" paused meter silent");
+    checks.push("Captured "+id+": full-kill silence, restored signal, both routing endpoints, pre-crossfader and paused meters");
+  }
   audio.child.kill("SIGKILL");
   await delay(800);
   assert.equal(audio.snapshot.ready, false);

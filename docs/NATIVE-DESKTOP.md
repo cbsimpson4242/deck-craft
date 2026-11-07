@@ -6,7 +6,15 @@ The approved first vertical slice is an installed Omarchy desktop app that opens
 
 The implementation is a **Linux preview**. Source, native signal output and desktop integration can be tested independently of the target desktop. User-local installation and launch through the normal desktop entry have now been verified on the Omarchy target, including a native Wayland window, the new library controls, retained private library and an audio-ready engine. The presentation-only deployment preserved the newer import/library backend byte-for-byte, retained the saved library and restored paused. These are launch/readiness smoke tests, not full file-chooser/portal, physical audible output or hardware-latency acceptance. Other operating systems and professional-DJ parity are not claimed.
 
-Supported first-slice controls: import a local source, load A/B/C/D, play/pause, seek, manual cue positions, channel levels and an equal-power A/B crossfader. C/D feed the same master directly. Master headroom is deliberately conservative; this is not a calibrated loudness or limiter implementation. Gain/EQ/filter, FX, sync, time stretch, loops, beat/key detection, VU meters, headphone cue routing and hardware mappings are disabled/unimplemented.
+Supported first-slice controls: import a local source, load A/B/C/D, play/pause, seek, manual cue positions, channel gain, full-kill three-band EQ, channel levels, post-EQ/post-fader stereo peak meters and per-channel L/R/THRU assignment to the equal-power crossfader. A defaults left, B right, C/D thru. Master headroom is deliberately conservative; this is not a calibrated loudness or limiter implementation. Filter, FX, sync, time stretch, loops, beat/key detection, headphone cue routing and hardware mappings are disabled/unimplemented.
+
+## Mixer signal path
+
+Decoded PCM passes through gain trim, a phase-aligned LR4 split at 250 Hz / 2.5 kHz, the three band gains, the channel fader, then the stereo peak meter, crossfader assignment and fixed master headroom. Knob 50 is unity, 100 is +6 dB, and 0 is zero contribution. Crossover skirts overlap; this is not a brick-wall frequency filter. All three bands killed settle to exact digital silence. Live changes use a short smoothing ramp.
+
+The strip has fixed filter storage and atomic parameters/meters: no additional allocation, file I/O, locks or waits on the per-sample path. The existing bounded PCM source and off-callback retirement remain intact. Meters publish native sample-derived peaks; the renderer only scales accepted readings logarithmically. Paused, ended, offline and failed channels report silence.
+
+The strict semantic bridge accepts bounded gain/EQ values and left/right/thru assignment only. Native receipts own mixer values; renderer persistence keeps assignment and kill restore memory separately from workspace designs. Initialization restores saved mixer settings without overwriting them with the engine's defaults or replaying transport.
 
 ## Authority boundaries
 

@@ -1,5 +1,10 @@
 use deck_craft_audio::{
-    Command, Identity, Request, checked_file, deck_index, decode, read_frame,
+    Command, Identity, Request, band_index, checked_file, deck_index, decode,
+    dsp::{
+        ChannelStrip, HIGH_CROSSOVER_HZ, LOW_CROSSOVER_HZ, Side, StripShared, knob_to_gain,
+        side_gain,
+    },
+    read_frame,
     stream::{Prepared, StreamState, prepare},
     validate,
 };
@@ -45,11 +50,21 @@ struct AudioDeck {
     channels: u16,
     sample_rate: u32,
     level: f64,
+    // Channel strip settings (knob positions 0..=100) and the audio-thread handle they feed.
+    gain: f64,
+    low: f64,
+    mid: f64,
+    hi: f64,
+    side: Side,
+    shared: Arc<StripShared>,
     path: String,
     identity: Option<Identity>,
     generation: u64,
     ended: bool,
     stream: Option<Arc<StreamState>>,
+}
+fn round4(value: f32) -> f64 {
+    (value as f64 * 1.0e4).round() / 1.0e4
 }
 struct Engine {
     output: Option<MixerDeviceSink>,
@@ -75,10 +90,14 @@ impl Engine {
    if d.track_id.is_some()&&d.player.empty(){d.ended=true;}
    let position=d.stream.as_ref().map(|s|s.position_frames.load(Ordering::Relaxed)as f64/d.sample_rate as f64).unwrap_or(0.0).clamp(0.0,d.duration);
    let underruns=d.stream.as_ref().map(|s|s.underrun_samples.load(Ordering::Relaxed)).unwrap_or(0);
-   json!({"id":(["A","B","C","D"][i]),"trackId":d.track_id,"duration":d.duration,"channels":d.channels,"sampleRate":d.sample_rate,"position":position,"playing":ready&&!failed&&d.track_id.is_some()&&!d.player.is_paused()&&!d.ended,"level":d.level,"loadGeneration":d.generation,"loading":loading[i],"underrunSamples":underruns,"error":if failed{Some("decoder_failed")}else{None}})
+   let playing=ready&&!failed&&d.track_id.is_some()&&!d.player.is_paused()&&!d.ended;
+   // Meters are only ever live while this channel is actually playing; a paused, ended, failed
+   // or offline channel reports silence rather than a held reading.
+   let (meter_left,meter_right)=if playing{d.shared.meter()}else{(0.0,0.0)};
+   json!({"id":(["A","B","C","D"][i]),"trackId":d.track_id,"duration":d.duration,"channels":d.channels,"sampleRate":d.sample_rate,"position":position,"playing":playing,"level":d.level,"gain":d.gain,"hi":d.hi,"mid":d.mid,"low":d.low,"assign":d.side.as_str(),"meter":{"l":round4(meter_left),"r":round4(meter_right)},"loadGeneration":d.generation,"loading":loading[i],"underrunSamples":underruns,"error":if failed{Some("decoder_failed")}else{None}})
   }).collect();
         let output=self.output.as_ref().map(|o|json!({"sampleRate":o.config().sample_rate().get(),"channels":o.config().channel_count().get(),"backend":"ALSA default device"}));
-        json!({"ready":ready,"output":output,"error":if ready{Value::Null}else{json!("audio_output_unavailable")},"decks":decks,"crossfader":self.crossfader})
+        json!({"ready":ready,"output":output,"error":if ready{Value::Null}else{json!("audio_output_unavailable")},"decks":decks,"crossfader":self.crossfader,"capabilities":{"channelEq":true,"channelMeters":true,"crossfaderAssign":true},"crossoverHz":[LOW_CROSSOVER_HZ,HIGH_CROSSOVER_HZ]})
     }
     fn send(&mut self, kind: &str, mut payload: Value) {
         self.sequence += 1;
@@ -97,15 +116,17 @@ impl Engine {
             json!({"id":id,"ok":error.is_none(),"error":error,"snapshot":snapshot}),
         );
     }
-    fn levels(&self) {
-        let angle = self.crossfader / 100.0 * std::f64::consts::FRAC_PI_2;
-        for (i, d) in self.decks.iter().enumerate() {
-            let fade = match i {
-                0 => angle.cos(),
-                1 => angle.sin(),
-                _ => 1.0,
-            };
-            d.player.set_volume((0.25 * d.level / 100.0 * fade) as f32);
+    /// Publish every channel's settings to its audio-thread strip (relaxed atomics only).
+    fn apply_mix(&self) {
+        for d in &self.decks {
+            d.shared.set_targets(
+                knob_to_gain(d.gain),
+                knob_to_gain(d.low),
+                knob_to_gain(d.mid),
+                knob_to_gain(d.hi),
+                (d.level / 100.0) as f32,
+                side_gain(d.side, self.crossfader),
+            );
         }
     }
     fn cancel(&mut self, i: usize) {
@@ -187,6 +208,7 @@ impl Engine {
                 let i = deck_index(&deck).unwrap();
                 self.cancel(i);
                 self.decks[i].player.pause();
+                self.decks[i].shared.reset_meter();
                 self.reply(&id, None);
             }
             Command::Play { deck } => {
@@ -206,6 +228,7 @@ impl Engine {
                     );
                     self.stage(id, i, args.0, args.1, args.2, 0.0, true, false, tx);
                 } else {
+                    self.decks[i].shared.reset_meter();
                     self.decks[i].player.play();
                     self.reply(&id, None);
                 }
@@ -233,12 +256,34 @@ impl Engine {
             Command::Level { deck, value } => {
                 let i = deck_index(&deck).unwrap();
                 self.decks[i].level = value;
-                self.levels();
+                self.apply_mix();
+                self.reply(&id, None);
+            }
+            Command::Gain { deck, value } => {
+                let i = deck_index(&deck).unwrap();
+                self.decks[i].gain = value;
+                self.apply_mix();
+                self.reply(&id, None);
+            }
+            Command::Eq { deck, band, value } => {
+                let i = deck_index(&deck).unwrap();
+                match band_index(&band).unwrap() {
+                    0 => self.decks[i].low = value,
+                    1 => self.decks[i].mid = value,
+                    _ => self.decks[i].hi = value,
+                }
+                self.apply_mix();
+                self.reply(&id, None);
+            }
+            Command::Assign { deck, side } => {
+                let i = deck_index(&deck).unwrap();
+                self.decks[i].side = Side::parse(&side).unwrap();
+                self.apply_mix();
                 self.reply(&id, None);
             }
             Command::Crossfader { value } => {
                 self.crossfader = value;
-                self.levels();
+                self.apply_mix();
                 self.reply(&id, None);
             }
         }
@@ -276,9 +321,11 @@ impl Engine {
         } = c.prepared;
         let replacement = Player::connect_new(self.output.as_ref().unwrap().mixer());
         replacement.pause();
-        replacement.append(source);
         let i = c.deck;
-        let level = self.decks[i].level;
+        // The strip (all its filter memory) is built here, on the control thread.
+        replacement.append(ChannelStrip::new(source, self.decks[i].shared.clone()));
+        let AudioDeck { level, gain, low, mid, hi, side, ref shared, .. } = self.decks[i];
+        let shared = shared.clone();
         self.decks[i] = AudioDeck {
             player: replacement,
             track_id: Some(c.track_id.clone()),
@@ -286,13 +333,19 @@ impl Engine {
             channels,
             sample_rate,
             level,
+            gain,
+            low,
+            mid,
+            hi,
+            side,
+            shared,
             path: c.path.clone(),
             identity: Some(c.identity.clone()),
             generation: c.generation,
             ended: false,
             stream: Some(state),
         };
-        self.levels();
+        self.apply_mix();
         if c.resume {
             self.decks[i].player.play();
         }
@@ -391,7 +444,7 @@ fn main() {
             .0
         });
     let decks = (0..4)
-        .map(|_| {
+        .map(|index| {
             let player = Player::connect_new(&mixer);
             player.pause();
             AudioDeck {
@@ -401,6 +454,13 @@ fn main() {
                 channels: 0,
                 sample_rate: 0,
                 level: 78.0,
+                gain: 50.0,
+                low: 50.0,
+                mid: 50.0,
+                hi: 50.0,
+                // A and B keep their crossfader sides; C and D stay direct, as before assignments.
+                side: [Side::Left, Side::Right, Side::Thru, Side::Thru][index],
+                shared: Arc::new(StripShared::default()),
                 path: String::new(),
                 identity: None,
                 generation: 0,
@@ -429,7 +489,7 @@ fn main() {
         engine_id,
         sequence: 0,
     };
-    engine.levels();
+    engine.apply_mix();
     let (tx, rx) = mpsc::channel();
     let input_tx = tx.clone();
     thread::spawn(move || {

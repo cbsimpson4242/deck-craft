@@ -95,6 +95,17 @@ export function knob(label,field,id,state) {
   const value=state.decks[id][field];
   return `<label class="knob" title="Deck ${id} ${escapeHTML(label)}"><span class="dial"><i style="transform:rotate(${(value-50)*2.7}deg)"></i></span><input type="range" data-action="deck-number" data-deck="${id}" data-field="${field}" min="0" max="100" value="${value}" aria-label="Deck ${id} ${escapeHTML(label)}"><small>${escapeHTML(label)}</small></label>`;
 }
+/** EQ band: a knob (0 silences the band, 50 is neutral) and a label button that kills / restores it. */
+export function eqKnob(label,field,id,state) {
+  const value=state.decks[id][field],killed=value===0;
+  return `<div class="eq-band" data-band="${field}"><label class="knob eq-knob" title="Deck ${id} ${escapeHTML(label)} — 0 silences the band, 50 is neutral"><span class="dial"><i style="transform:rotate(${(value-50)*2.7}deg)"></i></span><input type="range" data-action="deck-number" data-deck="${id}" data-field="${field}" min="0" max="100" value="${value}" aria-label="Deck ${id} ${escapeHTML(label)}"></label><button type="button" class="band-kill" data-action="eq-kill" data-deck="${id}" data-band="${field}" aria-pressed="${killed}" aria-label="Kill ${escapeHTML(label)} on channel ${id}" title="${escapeHTML(label)} kill: silence this band; press again to bring it back">${escapeHTML(label)}</button></div>`;
+}
+const ASSIGN_LABELS=[['left','L','left side of the crossfader'],['right','R','right side of the crossfader'],['thru','THRU','bypassing the crossfader']];
+/** Which side of the crossfader a channel follows. */
+export function assignGroup(id,state) {
+  const current=state.decks[id].assign;
+  return `<div class="xf-assign" role="group" aria-label="Channel ${id} crossfader assignment">${ASSIGN_LABELS.map(([value,text,words])=>`<button type="button" class="assign-${value}" data-action="assign" data-deck="${id}" data-value="${value}" aria-pressed="${current===value}" aria-label="Channel ${id} on the ${words}" title="Channel ${id}: ${words}">${text}</button>`).join('')}</div>`;
+}
 const loopPresets=[4,8,16];
 export function transport(id,state,compact=false) {
   const d=state.decks[id];
@@ -127,10 +138,10 @@ export function linearDeck(id,state,ui) {
   return `<section class="deck face linear-deck ${['A','C'].includes(id)?'a':'b'}" data-deck="${id}" style="--deck:${deckColor(id,state)}">${deckHead(id,state)}<div class="linear-playback">${wave(id,state)}${transport(id,state)}</div><div class="linear-foot"><span class="linear-phrase">● ● ● ○ <i>Synthetic phrase fixture</i></span><button class="cues-toggle" data-action="cue-disclosure" data-deck="${id}" aria-expanded="${open}">${icon('bookmark')}Hot cues <span>4</span></button></div><div class="cue-disclosure" data-cue-panel="${id}" ${open?'':'hidden'}>${pads(id,state)}</div></section>`;
 }
 export function crossfader(state) {
-  return `<label class="crossfader"><span>A</span><input type="range" data-action="crossfader" min="0" max="100" value="${state.mixer.crossfader}" aria-label="Crossfader"><span>B</span></label>`;
+  return `<label class="crossfader"><span>L</span><input type="range" data-action="crossfader" min="0" max="100" value="${state.mixer.crossfader}" aria-label="Crossfader"><span>R</span></label>`;
 }
 export function mixer(state,ids=['A','B']) {
-  return `<section class="mixer"><div class="mixer-top"><span>INTERNAL MIXER</span>${icon('settings')}</div><div class="channel-strips">${ids.map(id=>`<div class="channel"><div class="channel-title">${id}<span>●</span></div>${knob('GAIN','gain',id,state)}${knob('HI','hi',id,state)}${knob('MID','mid',id,state)}${knob('LOW','low',id,state)}<div class="fader-area"><div class="vu" aria-label="No audio meter input"><i></i><i></i></div><input class="fader" type="range" data-action="deck-number" data-deck="${id}" data-field="level" min="0" max="100" value="${state.decks[id].level}" aria-label="Channel ${id} volume"><div class="fader-scale"><span>+6</span><span>0</span><span>−6</span><span>−∞</span></div></div><button class="channel-cue" data-action="toggle-deck" data-deck="${id}" data-field="headphone" aria-label="Monitor channel ${id}" aria-pressed="${state.decks[id].headphone}">${icon('headphones')}</button></div>`).join('')}</div>${crossfader(state)}<div class="cross-marks"><span>◁</span><span>THRU</span><span>▷</span></div></section>`;
+  return `<section class="mixer"><div class="mixer-top"><span>INTERNAL MIXER</span>${icon('settings')}</div><div class="channel-strips">${ids.map(id=>`<div class="channel" data-channel="${id}"><div class="channel-title">${id}<span>●</span></div>${knob('GAIN','gain',id,state)}${eqKnob('HI','hi',id,state)}${eqKnob('MID','mid',id,state)}${eqKnob('LOW','low',id,state)}${assignGroup(id,state)}<div class="fader-area"><div class="vu" data-vu-deck="${id}" role="img" aria-label="Channel ${id} meter: no audio meter input"><i></i><i></i></div><input class="fader" type="range" data-action="deck-number" data-deck="${id}" data-field="level" min="0" max="100" value="${state.decks[id].level}" aria-label="Channel ${id} volume"><div class="fader-scale"><span>+6</span><span>0</span><span>−6</span><span>−∞</span></div></div><button class="channel-cue" data-action="toggle-deck" data-deck="${id}" data-field="headphone" aria-label="Monitor channel ${id}" aria-pressed="${state.decks[id].headphone}">${icon('headphones')}</button></div>`).join('')}</div>${crossfader(state)}<div class="cross-marks"><span>◁</span><span>THRU</span><span>▷</span></div></section>`;
 }
 export function dock(state) {
   const channel=id=>`<div class="dock-channel"><span class="dock-letter ${id==='B'?'b':''}">${id}</span>${knob('FILTER','filter',id,state)}<label class="dock-level">LEVEL<input type="range" data-action="deck-number" data-deck="${id}" data-field="level" min="0" max="100" value="${state.decks[id].level}" aria-label="Deck ${id} level"></label></div>`;

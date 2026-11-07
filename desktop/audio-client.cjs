@@ -3,6 +3,23 @@ const { spawn } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 const { EventEmitter } = require("node:events");
 
+const SIDES = ["left", "thru", "right"];
+const knob = (v) => Number.isFinite(v) && v >= 0 && v <= 100;
+const peak = (v) => Number.isFinite(v) && v >= 0 && v <= 16;
+/**
+ * Mixer fields are optional (an older engine has none) but never trusted: any present value must be
+ * in range, and a channel that is not playing always reports a silent meter.
+ */
+function checkDeck(deck, ready) {
+  if (!deck || typeof deck !== "object") throw Error("invalid_engine_snapshot");
+  for (const key of ["gain", "hi", "mid", "low"]) if (Object.hasOwn(deck, key) && !knob(deck[key])) throw Error("invalid_engine_snapshot");
+  if (Object.hasOwn(deck, "assign") && !SIDES.includes(deck.assign)) throw Error("invalid_engine_snapshot");
+  if (!Object.hasOwn(deck, "meter")) return deck;
+  const m = deck.meter;
+  if (!m || typeof m !== "object" || Object.keys(m).length !== 2 || !peak(m.l) || !peak(m.r)) throw Error("invalid_engine_snapshot");
+  return ready && deck.playing === true ? deck : { ...deck, meter: { l: 0, r: 0 } };
+}
+
 /** A local, framed child-process connection. No listening port or shell. */
 class AudioClient extends EventEmitter {
   constructor(binary, { env = process.env } = {}) {
@@ -87,7 +104,8 @@ class AudioClient extends EventEmitter {
     if (message.snapshot) {
       if (typeof message.snapshot.ready !== "boolean" || !Array.isArray(message.snapshot.decks) || message.snapshot.decks.length !== 4)
         throw Error("invalid_engine_snapshot");
-      this.snapshot = { ...message.snapshot, sourceId: this.sourceId, terminal: false, engineId: this.engineId, seq: this.sequence };
+      const decks = message.snapshot.decks.map((d) => checkDeck(d, message.snapshot.ready));
+      this.snapshot = { ...message.snapshot, decks, sourceId: this.sourceId, terminal: false, engineId: this.engineId, seq: this.sequence };
       this.emit("state", this.snapshot);
     }
     if (message.kind === "reply") {
@@ -133,7 +151,7 @@ class AudioClient extends EventEmitter {
       terminal: true,
       ready: false,
       error,
-      decks: this.snapshot.decks.map((d) => ({ ...d, playing: false })),
+      decks: this.snapshot.decks.map((d) => ({ ...d, playing: false, ...(Object.hasOwn(d, "meter") ? { meter: { l: 0, r: 0 } } : {}) })),
     };
     this.emit("state", this.snapshot);
   }
