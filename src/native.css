@@ -36,12 +36,13 @@
   cursor: not-allowed;
 }
 .native-desktop .vu i {
-  height: 0 !important;
+  height: calc(var(--meter, 0) * 100%) !important;
+  transition: height 90ms linear;
   animation: none !important;
 }
-.native-desktop .vu {
-  opacity: 0.18;
-}
+.native-desktop .vu { opacity: 0.35; }
+.native-desktop .vu[data-live="true"] { opacity: 1; }
+.native-desktop .vu i[data-clip="true"] { background: #ed6565; }
 .native-desktop .precision-ruler {
   font-size: 9px;
   letter-spacing: 0.08em;

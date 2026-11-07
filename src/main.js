@@ -51,6 +51,8 @@ function update() {
       if(label?.classList.contains('knob')) {$('.dial i',label).style.transform=`rotate(${(value-50)*2.7}deg)`;input.setAttribute('aria-valuetext',value+' percent');}
       if(label?.classList.contains('pitch')) $('output',label).textContent=(value>=0?'+':'')+value.toFixed(1)+'%';
     });
+    $$(`[data-action="eq-kill"][data-deck="${id}"]`).forEach(button=>button.setAttribute('aria-pressed',String(d[button.dataset.band]===0)));
+    $$(`[data-action="assign"][data-deck="${id}"]`).forEach(button=>button.setAttribute('aria-pressed',String(d.assign===button.dataset.value)));
     $$(`[data-action="hot-cue"][data-deck="${id}"]`).forEach(button=>{
       const index=Number(button.dataset.index),cue=d.cues[index];$('small',button).textContent=timeLabel(cue);button.setAttribute('aria-pressed',String(Math.abs(cue-d.position)<.05));button.classList.toggle('filled',index===0||cue>0);
     });
@@ -115,6 +117,8 @@ root.addEventListener('click',event=>{
     case 'mode':dispatch({type:'mode',value:target.dataset.value});break;
     case 'toggle-deck':dispatch({type:'deck',deck:id,field,value:!state.decks[id][field]});if(field==='playing'&&!nativeAudio)toast('Transport UI state only — no audio engine is connected.');break;
     case 'cue':dispatch({type:'cue',deck:id});break;
+    case 'eq-kill':dispatch({type:'eq-kill',deck:id,band:target.dataset.band,kill:state.decks[id][target.dataset.band]>0});break;
+    case 'assign':dispatch({type:'assign',deck:id,value:target.dataset.value});break;
     case 'loop-length':dispatch({type:'deck',deck:id,field:'loopLength',value:Number(target.dataset.value)});break;
     case 'loop-size':dispatch({type:'deck',deck:id,field:'loopLength',value:Math.max(1,Math.min(32,state.decks[id].loopLength*Number(target.dataset.factor)))});break;
     case 'hot-cue':dispatch({type:event.shiftKey?'setCue':'hotCue',deck:id,index:Number(target.dataset.index)});if(event.shiftKey)toast('Cue stored at the current UI position.');break;

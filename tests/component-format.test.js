@@ -39,7 +39,7 @@ test('creator deck previews cannot enter native transport painting',()=>{
  const previous=globalThis.document;
  globalThis.document={body:{classList:{add(){}}},querySelector:selector=>selector==='.app'?{}:selector==='.native-audio-bar'?{querySelector:()=>({})}:null,querySelectorAll:selector=>selector==='[data-field="playing"]'&&markup.includes('data-field="playing"')?[{dataset:{},setAttribute(){}}]:[]};
  try {
-  assert.doesNotThrow(()=>NativeSession.prototype.paint.call({store:{get:createSession},status:{ready:false,decks:[]},busy:new Set(),initialized:true,paintClock:NativeSession.prototype.paintClock}));
+  assert.doesNotThrow(()=>NativeSession.prototype.paint.call({store:{get:createSession},status:{ready:false,decks:[]},busy:new Set(),initialized:true,paintClock:NativeSession.prototype.paintClock,paintMeters:NativeSession.prototype.paintMeters}));
   assert.doesNotMatch(markup,/ data-(?:action|field|deck|wave-deck|track-id)=/);
  } finally {if(previous===undefined)delete globalThis.document;else globalThis.document=previous;}
 });
