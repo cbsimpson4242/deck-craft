@@ -43,6 +43,26 @@ function snapshotText(records, collections = []) {
   }
   return chunks.join("") + ending;
 }
+// Session-only fine waveform (8-bit peak and RMS per bin, base64) from the native engine. It is
+// forwarded to the renderer for the loaded deck and never stored in the registry or snapshot, so the
+// per-track persistence budget is unchanged. Anything not exactly well formed is dropped.
+const DETAIL_MIN_BINS = 512;
+const DETAIL_MAX_BINS = 32768;
+function publicWaveDetail(detail) {
+  if (!detail || typeof detail !== "object" || Array.isArray(detail)) return null;
+  const keys = Object.keys(detail);
+  if (keys.length !== 3 || !["bins", "peak", "rms"].every((k) => keys.includes(k))) return null;
+  const { bins, peak, rms } = detail;
+  if (!Number.isInteger(bins) || bins < DETAIL_MIN_BINS || bins > DETAIL_MAX_BINS) return null;
+  const bytes = [peak, rms].map((text) => {
+    if (typeof text !== "string" || text.length !== Math.ceil(bins / 3) * 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(text)) return null;
+    const data = Buffer.from(text, "base64");
+    return data.length === bins && data.toString("base64") === text ? data : null;
+  });
+  if (!bytes[0] || !bytes[1]) return null;
+  for (let i = 0; i < bins; i++) if (bytes[1][i] > bytes[0][i]) return null; // RMS cannot exceed the peak containing it
+  return { bins, peak, rms };
+}
 function publicTrack(r) {
   return {
     id: r.id,
@@ -248,4 +268,4 @@ class LocalLibrary {
     }
   }
 }
-module.exports = { LocalLibrary, publicTrack, ID, COLLECTION_ID };
+module.exports = { LocalLibrary, publicTrack, publicWaveDetail, ID, COLLECTION_ID };

@@ -1,7 +1,10 @@
 import { allTracks, libraryCollections, replaceLocalLibrary, DECK_IDS } from './catalog.js';
 import { escapeHTML, icon, timeLabel } from './components.js';
 
-export function orderedLibraryTracks(state) {
+// A table without filter controls must never inherit an inaccessible saved filter.
+// This is a presentation projection, not a session/collection migration.
+export function orderedLibraryTracks(state, { unfiltered = false } = {}) {
+  if(unfiltered)return allTracks().filter(t=>t.local).sort((a,b)=>a.title.localeCompare(b.title));
   const group=libraryCollections().find(c=>c.id===state.library.crate);
   const order=new Map((group?.trackIds||[]).map((id,i)=>[id,i]));
   const query=state.library.query.toLowerCase();
@@ -9,16 +12,10 @@ export function orderedLibraryTracks(state) {
   return tracks.sort((a,b)=>group?.kind==='playlist'&&state.library.sort==='order' ? order.get(a.id)-order.get(b.id) : state.library.sort==='duration' ? a.duration-b.duration||a.title.localeCompare(b.title) : a.title.localeCompare(b.title));
 }
 export function nativeLibrary(state) {
-  const groups=libraryCollections(),group=groups.find(c=>c.id===state.library.crate);
-  const rows=allTracks().map(t=>`<tr data-track-id="${t.id}" tabindex="0"><td class="library-check">${t.local?`<input type="checkbox" data-action="library-select" data-track="${t.id}" aria-label="Select ${escapeHTML(t.title)}">`:''}</td><td class="name-cell"><div><b>${escapeHTML(t.title)}</b><span>${t.local?'Local audio · analysis pending':'Synthetic demo · no audio'}</span></div></td><td class="bpm-cell">—</td><td class="time-cell">${timeLabel(t.duration)}</td><td class="load-cell"><button class="load" data-action="load" data-track="${t.id}" ${t.local?'':'disabled'} aria-label="Load ${escapeHTML(t.title)} into selected deck">${icon('arrow')}</button><span class="playlist-order"><button data-action="library-move" data-track="${t.id}" data-direction="-1" aria-label="Move ${escapeHTML(t.title)} up">↑</button><button data-action="library-move" data-track="${t.id}" data-direction="1" aria-label="Move ${escapeHTML(t.title)} down">↓</button></span></td></tr>`).join('');
+  const rows=allTracks().map(t=>`<tr data-track-id="${t.id}" tabindex="0" draggable="${t.local?'true':'false'}"${t.local?' title="Drag onto a deck or waveform to load it"':''}><td class="library-check">${t.local?`<input type="checkbox" data-action="library-select" data-track="${t.id}" aria-label="Select ${escapeHTML(t.title)}">`:''}</td><td class="name-cell"><div><b>${escapeHTML(t.title)}</b><span>${t.local?'Local audio · analysis pending':'Synthetic demo · no audio'}</span></div></td><td class="bpm-cell">—</td><td class="time-cell">${timeLabel(t.duration)}</td><td class="load-cell"><button class="load" data-action="load" data-track="${t.id}" ${t.local?'':'disabled'} aria-label="Load ${escapeHTML(t.title)} into selected deck">${icon('arrow')}</button><span class="playlist-order"><button data-action="library-move" data-track="${t.id}" data-direction="-1" aria-label="Move ${escapeHTML(t.title)} up">↑</button><button data-action="library-move" data-track="${t.id}" data-direction="1" aria-label="Move ${escapeHTML(t.title)} down">↓</button></span></td></tr>`).join('');
   return `<section class="library local-library ${state.library.dense?'tight-rows':''}"><div class="library-main">
-    <div class="library-toolbar"><div class="library-title">Your music <span class="divider">/</span><strong class="crate-name">${escapeHTML(group?.name||'All tracks')}</strong><span class="track-count"></span></div><label class="searchbox">${icon('search')}<input class="search" data-action="search" placeholder="Search your music" value="${escapeHTML(state.library.query)}" aria-label="Search collection"></label><button class="icon-btn view-toggle" data-action="density" aria-label="Toggle compact rows">${icon('list')}</button></div>
-    <div class="library-imports"><button data-action="library-import" data-kind="files">${icon('music')}Add files</button><button data-action="library-import" data-kind="folder">${icon('folder')}Add folder</button><button data-action="library-new" data-kind="crate">+ New crate</button><button data-action="library-new" data-kind="playlist">+ New playlist</button></div>
-    <div class="library-navigation"><label>Collection<select data-action="library-view" aria-label="Music collection"><option value="all">All local tracks</option>${groups.map(c=>`<option value="${c.id}" ${group?.id===c.id?'selected':''}>${c.kind==='playlist'?'Playlist':'Crate'} · ${escapeHTML(c.name)} (${c.trackIds.length})</option>`).join('')}<option value="demo" ${state.library.crate==='demo'?'selected':''}>Demo fixtures · no audio</option></select></label><label>Sort<select data-action="library-sort" aria-label="Sort tracks"><option value="title">Title</option><option value="duration">Duration</option><option value="order">Playlist order</option></select></label><button data-action="library-rename">Rename</button><button data-action="library-delete">Delete collection</button></div>
-    <div class="library-selection"><label><input type="checkbox" data-action="library-select-all" aria-label="Select visible tracks">Select visible</label><span class="library-selected-count">0 selected</span><label>Add to<select data-action="library-destination" aria-label="Add selected tracks to collection"><option value="">Choose crate / playlist</option>${groups.map(c=>`<option value="${c.id}">${escapeHTML(c.name)}</option>`).join('')}</select></label><button data-action="library-add">Add selected</button><button data-action="library-remove">Remove from collection</button><button data-action="library-forget">Remove from library</button></div>
-    <label class="load-choice">LOAD INTO <select class="load-target" data-action="load-target" aria-label="Load into deck">${DECK_IDS.map(id=>`<option value="${id}" ${id===state.library.target?'selected':''}>Deck ${id}</option>`).join('')}</select><span>Load stays paused · files remain in their original location</span></label>
+    <div class="table-wrap"><table><thead><tr><th>Select</th><th>TRACK</th><th>BPM</th><th class="time-cell">TIME</th><th>LOAD / ORDER</th></tr></thead><tbody>${rows}</tbody></table><div class="empty" hidden>No local tracks in the library.</div></div>
     <div class="library-feedback" role="status" aria-live="polite"></div>
-    <div class="table-wrap"><table><thead><tr><th>Select</th><th>TRACK</th><th>BPM</th><th class="time-cell">TIME</th><th>LOAD / ORDER</th></tr></thead><tbody>${rows}</tbody></table><div class="empty" hidden>No tracks here. Add files or a folder, or add selected tracks to this collection. <button data-action="clear-search">Show all tracks</button></div></div>
     <dialog class="collection-dialog"><h2></h2><p></p><label>Name<input class="collection-name" maxlength="80" aria-label="Collection name"></label><div><button data-action="library-save">Save</button><button data-action="library-cancel">Cancel</button></div></dialog>
   </div></section>`;
 }
@@ -26,7 +23,7 @@ export function nativeLibrary(state) {
 export class LibraryController {
   constructor(bridge,store,native,{redraw,say,root}) {
     Object.assign(this,{bridge,store,native,redraw,say,root});
-    this.selected=new Set();this.destination='';this.busy=false;this.message='Add your music to the library, then load a deck and press Play.';
+    this.selected=new Set();this.destination='';this.busy=false;this.message='';
   }
   progress(event) {
     this.message=`Importing ${event.completed} / ${event.total} · ${event.added} added · ${event.failed} failed`;
@@ -36,30 +33,32 @@ export class LibraryController {
     const state=this.store.get(),group=libraryCollections().find(c=>c.id===state.library.crate);
     for(const panel of this.root.querySelectorAll('.local-library:not(.design-preview .local-library)')) {
     const q=s=>panel.querySelector(s),qa=s=>[...panel.querySelectorAll(s)];
-    const visible=orderedLibraryTracks(state),ids=new Set(visible.filter(t=>t.local).map(t=>t.id));
-    const picker=q('[data-action="library-view"]');if(!picker)continue;
-    picker.value=group?.id||(state.library.crate==='demo'?'demo':'all');
+    const picker=q('[data-action="library-view"]');
+    const visible=orderedLibraryTracks(state,{unfiltered:!picker}),ids=new Set(visible.filter(t=>t.local).map(t=>t.id));
+    const set=(selector,property,value)=>{const el=q(selector);if(el)el[property]=value;};
+    set('[data-action="library-view"]','value',group?.id||(state.library.crate==='demo'?'demo':'all'));
     if(!libraryCollections().some(c=>c.id===this.destination))this.destination='';
-    q('[data-action="library-destination"]').value=this.destination;
-    q('.crate-name').textContent=group?.name||(state.library.crate==='demo'?'Demo fixtures':'All local tracks');
-    q('[data-action="library-sort"]').value=state.library.sort;
-    q('[data-action="library-sort"] option[value="order"]').disabled=group?.kind!=='playlist';
-    for(const action of ['library-rename','library-delete'])q(`[data-action="${action}"]`).disabled=this.busy||!group;
+    set('[data-action="library-destination"]','value',this.destination);
+    set('.crate-name','textContent',group?.name||(state.library.crate==='demo'?'Demo fixtures':'All local tracks'));
+    set('[data-action="library-sort"]','value',state.library.sort);
+    set('[data-action="library-sort"] option[value="order"]','disabled',group?.kind!=='playlist');
+    for(const action of ['library-rename','library-delete'])set(`[data-action="${action}"]`,'disabled',this.busy||!group);
     for(const el of qa('[data-action="library-import"],[data-action="library-new"]'))el.disabled=this.busy;
-    q('[data-action="library-add"]').disabled=this.busy||!this.selected.size||!libraryCollections().length;
-    q('[data-action="library-remove"]').disabled=this.busy||!this.selected.size||!group;
-    q('[data-action="library-forget"]').disabled=this.busy||!this.selected.size;
-    q('.library-selected-count').textContent=`${this.selected.size} selected`;
-    q('.library-feedback').textContent=this.message;
+    set('[data-action="library-add"]','disabled',this.busy||!this.selected.size||!libraryCollections().length);
+    set('[data-action="library-remove"]','disabled',this.busy||!this.selected.size||!group);
+    set('[data-action="library-forget"]','disabled',this.busy||!this.selected.size);
+    set('.library-selected-count','textContent',`${this.selected.size} selected`);
+    set('.library-feedback','textContent',this.message);
     for(const el of qa('[data-action="library-select"]'))el.checked=this.selected.has(el.dataset.track);
     const selectAll=q('[data-action="library-select-all"]'),n=[...ids].filter(id=>this.selected.has(id)).length;
-    selectAll.checked=ids.size>0&&n===ids.size;selectAll.indeterminate=n>0&&n<ids.size;selectAll.disabled=this.busy||!ids.size;
+    if(selectAll){selectAll.checked=ids.size>0&&n===ids.size;selectAll.indeterminate=n>0&&n<ids.size;selectAll.disabled=this.busy||!ids.size;}
     for(const row of qa('tr[data-track-id]')) {
-      row.querySelector('.playlist-order').hidden=group?.kind!=='playlist';
+      const order=row.querySelector('.playlist-order');if(order)order.hidden=!picker||group?.kind!=='playlist';
       const index=group?.trackIds.indexOf(row.dataset.trackId)??-1;
       for(const button of row.querySelectorAll('[data-action="library-move"]'))button.disabled=this.busy||index<0||(button.dataset.direction==='-1'?index===0:index===group.trackIds.length-1);
     }
     }
+    for(const el of this.root.querySelectorAll('.settings-native [data-action="library-import"]'))el.disabled=this.busy;
   }
   async run(request) {
     if(this.busy)return;

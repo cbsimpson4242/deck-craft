@@ -2,20 +2,30 @@
 
 ## First-stage boundary
 
-This is a working presentation editor over DeckCraft's existing shared four-deck session, not a new audio engine or executable plugin system. Enter through **Customize** or **Layout → Custom canvas**. The canvas is initially empty. Studio Sync remains the ordinary default; existing layout/session preferences are preserved. The five original views remain selectable unchanged, and the builder also offers editable starter arrangements based on each of them. Those arrangements reuse components; they are not pixel-identical conversions of the historical designs.
+The builder edits presentation over Deck Craft's existing shared four-deck session. Open **Build** in the application header. A new canvas is initially empty; **Console** and **Two decks** starter arrangements reuse the current shared components. **Perform** returns to the main console without changing the audio session. Historical design files remain preserved separately.
 
 ## Build a workspace
 
 - Click or drag Deck, Mixer, Browser, Waveform, Cues, Crossfader or Effects from the drawer. The deck picker binds new deck-related parts to A/B/C/D; it never creates a fifth engine deck.
-- In **Edit**, drag a component title to move it, drag its corner to resize it, or enter exact coordinates/dimensions in the inspector. Snap uses a 20-pixel grid; disabling it permits integer-pixel positioning. Focus a title and use arrow keys to move it, with Shift for larger steps.
-- Select a title to edit its name, deck binding, position, size and **theme**. Free colors, corner radius, density and type scale were removed in component format 2; a component picks one of five themes (Graphite, Midnight, Ember, Orchid, Daylight) or follows the application theme. "Theme all" in the toolbar applies one theme to every component. Deck waveforms, artwork and cue sections can be hidden.
-- Each component kind has a smallest size at which its whole face fits (deck 520×560, mixer 400×660, browser 560×660, waveform 420×200, cues 520×170, crossfader 360×220, effects 580×200). Resizing, the inspector and imports never go below it, so widgets do not clip or grow inner scrollbars; only the browser's track list scrolls.
-- **Save as component** creates an independent reusable design in the drawer. New instances can target another deck without changing the saved design. Duplicate creates another view, not another playback source.
+- In **Edit**, drag a component's title bar to move it and grab any of its **eight handles** (four sides and four corners) to resize it. See *Selecting, moving and resizing* below. There is no properties inspector and no numeric position/size fields; the canvas takes that width.
+- Component internals are not edited in the builder at this stage. Name, deck binding and visible sections come from the **Bind new deck parts to** picker, starters, saved components and reviewed JSON imports, and existing saved values are kept exactly as they are. Free colors, corner radius, density and type scale were removed in component format 2; a component picks one of the three themes (Night, Ember, Studio) or follows the application theme. The toolbar's **Theme all** applies one theme to every component.
+- Each component kind has a smallest size at which its whole face fits (deck 480×380, mixer 460×420, browser 560×420, waveform 420×160, cues 440×170, crossfader 360×160, effects 580×200). Resizing (pointer or keyboard) and imports never go below it, so widgets do not clip or grow inner scrollbars; only the browser's track list scrolls.
+- A selected component shows three compact actions in its title bar. **Save** creates an independent reusable design in the drawer. New instances can target another deck without changing the saved design. Duplicate creates another view, not another playback source.
 - **Save workspace** stores an arrangement preset; **Export** downloads portable workspace JSON. **New blank** clears the canvas after confirmation, not music or saved templates. Workspace imports and starter changes replace only the canvas and can be undone.
-- **Perform** hides the drawer/inspector and locks layout edits while leaving supported audio controls active. It is a transient editing lock, not a separate audio mode.
+- **Perform** hides the drawer, resize handles and component actions and locks layout edits while leaving supported audio controls active. It is a transient editing lock, not a separate audio mode.
 - Undo/Redo covers presentation changes, with 40 in-memory history entries. It never undoes playback commands. Ctrl/Cmd+Z, Shift+Ctrl/Cmd+Z and Ctrl/Cmd+Y work outside text fields/dialogs. Delete removes the selected view.
 
 The canvas is a scrollable desktop surface, not an automatic responsive reflow system. Components may deliberately overlap; selected views come forward. Small windows can pan the canvas and scroll inside widgets. Group editing, arbitrary control rearrangement within a deck, typography/font uploads, custom markup, scripts, DSP, new routing and direct agent connections are future work.
+
+## Selecting, moving and resizing
+
+- Pressing anywhere on a component selects it (a clear outline); pressing bare canvas clears the selection. Selecting never changes the layout, history or audio, and the component's own controls keep working normally in Edit mode.
+- Drag the **title bar** to move. Every component has **eight resize handles**: top, bottom, left and right edges and all four corners. Handles are subtle on hover, clear on the selected component and bright under the pointer; the cursor is `ns-resize`, `ew-resize`, `nwse-resize` or `nesw-resize` to match the grabbed edge. While dragging, a small badge shows the size (or position), plus "smallest size" when a limit is reached.
+- The edge opposite the one you grab never moves. Dragging a top or left edge keeps the bottom or right edge in place; a corner keeps the diagonal corner in place. The grabbed edge snaps to the 20-pixel grid (exact pixels with **Snap** off), then stops at the component's smallest whole-face size, the 1600-pixel maximum or the canvas origin. At a limit nothing jumps: results are computed from the total pointer travel, so moving back inside the limit follows the pointer again. Canvas scrolling during a drag is included.
+- A gesture is one history entry, committed on release. A click, a drag that ends where it began or a fully clamped drag adds nothing. **Escape**, a lost pointer or window focus loss cancels the drag and restores the saved layout without touching undo/redo.
+- Keyboard: focus a title and use the arrow keys to move (Shift for larger steps); **Alt+arrow** resizes from the bottom-right corner with the same limits. Delete removes the selected view.
+- **Duplicate**, **Save** (reusable component) and **Remove** are the only contextual actions. Removing a view never unloads a track. Exporting a single component's JSON is available from **AI creator kit → Download starter component**, which uses the selected component.
+- None of this reads or writes musical state. In **Perform** there are no handles or actions, and pointer, Delete and Alt+arrow edits are ignored.
 
 ## Shared session and storage
 
@@ -33,7 +43,7 @@ Deck components use the shared reference deck face and a 560-pixel default heigh
 
 Limits: 24 placed components, 24 saved component templates, eight saved workspace presets, 256 KiB per imported design and 1 MiB serialized workspace state. Item coordinates are bounded to x 0..2400 / y 0..4800; width 320..1600 and height 160..1600. Unknown fields, invalid versions, duplicate item IDs, unknown theme names and out-of-range dimensions are rejected before mutation. Imported designs smaller than a component's minimum size are grown to it.
 
-Effects and unsupported EQ, sync, pitch, loops and headphone controls stay disabled in the canvas, including browser-only builds. The browser-only artifact has no audio. Imported PCM displays and native playback keep their existing limitations; styling does not implement new DSP.
+Effects and unsupported sync, pitch, loops and headphone controls stay disabled in the canvas, including browser-only builds. The mixer component shows the shared gain, three-band EQ and sweep-filter knobs for all four decks (real native controls in the desktop app; plain UI settings in the audio-less browser artifact). The browser-only artifact has no audio. Imported PCM displays and native playback keep their existing limitations; styling does not implement new DSP.
 
 ## Use any external AI agent
 
@@ -77,6 +87,6 @@ npm run test:canvas
 python3 scripts/check_publication.py
 ```
 
-The canvas Chromium gate exercises real pointer drag/resize, inspector changes, reusable templates, undo/redo, save/restore, Perform locking, file import, validation, inert previews, actual kit/workspace downloads, standalone exported-validator execution, all component kinds, duplicate-browser filtering, original-view transitions and five viewport widths. It is browser-fixture proof, not audio acceptance.
+The canvas Chromium gate exercises real pointer move and resize from all eight handles on every component kind (directional cursors, anchored north/west edges, smallest size, canvas origin, one undo per gesture, Escape cancel, Alt+arrow resizing, contextual Duplicate/Save/Remove, Perform locking, and the absence of the inspector), reusable templates, undo/redo, save/restore, Perform locking, file import, validation, inert previews, actual kit/workspace downloads, standalone exported-validator execution, all component kinds, duplicate-browser filtering, original-view transitions and five viewport widths. It is browser-fixture proof, not audio acceptance.
 
 The Electron harness additionally exercises canvas add/theme/remove while a generated local source is playing, confirms stable native engine/load generation, pauses/plays through a canvas deck, and downloads the creator kit through the sandboxed desktop. Run `test:native` and `test:desktop` serially with the explicitly isolated sink setup in [NATIVE-DESKTOP.md](NATIVE-DESKTOP.md). A compatibility build's installed payload, ordinary launcher, native Wayland window and child engine were separately verified on the target without interrupting the subsequently active user session. This does not establish target portal/chooser lifecycle, physical output or hardware latency. The separate opt-in GTK chooser's documented ambient-filesystem limitation remains unchanged.

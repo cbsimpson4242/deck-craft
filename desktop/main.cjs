@@ -4,7 +4,7 @@ const path = require("node:path");
 const fs = require("node:fs/promises");
 const { createHash } = require("node:crypto");
 const { AudioClient } = require("./audio-client.cjs");
-const { LocalLibrary } = require("./library.cjs");
+const { LocalLibrary, publicWaveDetail } = require("./library.cjs");
 const { inspectAudio, importSelection } = require("./importer.cjs");
 const { APP_URL, validateIPC, authorize } = require("./policy.cjs");
 protocol.registerSchemesAsPrivileged([{ scheme: "deckcraft", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
@@ -97,10 +97,13 @@ async function startDesktop({ userData, enginePath, chooseFile, show = true } = 
       if (audio === client) notify({ type: "state", snapshot });
     });
     client.on("waveform", async (message) => {
-      if (audio !== client) return;
+      const owner = () => audio === client && !client.closed && client.engineId === message.engineId &&
+        client.snapshot.decks.find((d) => d.id === message.deck && d.trackId === message.trackId &&
+          Number.isSafeInteger(message.loadGeneration) && d.waveGeneration === message.loadGeneration);
+      if (!owner()) return;
       let track;
       try {
-        const active = client.snapshot.decks.find((d) => d.id === message.deck && d.trackId === message.trackId);
+        const active = owner();
         if (!active) return;
         library.commit(message.trackId, active);
         track = library.waveform(message.trackId, message.peaks);
@@ -108,8 +111,16 @@ async function startDesktop({ userData, enginePath, chooseFile, show = true } = 
         return;
       }
       if (track) {
+        // The fine envelope is session-only presentation data: validated, forwarded, never saved.
+        const detail = publicWaveDetail(message.detail);
         const saved = await library.save();
-        if (audio === client) notify({ type: "track", track, warning: saved ? "" : library.warning });
+        // Saving can yield to a replacement load, child death or reconnect. Never publish an old
+        // envelope into the new owner's canvas, even when the same opaque track was reloaded.
+        if (owner()) {
+          notify({ type: "track", track, warning: saved ? "" : library.warning });
+          if (detail) notify({ type: "waveform-detail", deck: message.deck, trackId: message.trackId,
+            loadGeneration: message.loadGeneration, engineId: client.engineId, sourceId: client.sourceId, detail });
+        }
       }
     });
   }

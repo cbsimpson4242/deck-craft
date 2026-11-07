@@ -2,9 +2,10 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs/promises');
 const path=require('node:path');
-module.exports=async function({js,command,until,checks,start,idA,dir,window}) {
- await js("document.querySelector('.canvas-entry').click();document.querySelector('[data-editor=add][data-kind=deck]').click()");
- await js("{const x=document.querySelector('[data-editor-field=theme]');x.value='orchid';x.dispatchEvent(new Event('change',{bubbles:true}));}");
+module.exports=async function({js,command,until,checks,start,idA,dir,window,pointerClick,settingsClick}) {
+ await pointerClick(".canvas-entry");
+ await js("document.querySelector('[data-editor=add][data-kind=deck]').click()");
+ await js("{const x=document.querySelector('[data-editor-field=theme-all]');x.value='ember';x.dispatchEvent(new Event('change',{bubbles:true}));}");
  await js("document.querySelector('[data-editor=remove]').click()");
  let snapshot=(await command({type:'status'})).snapshot;
  assert.equal(snapshot.engineId,start.engineId);assert.equal(snapshot.decks[0].trackId,idA);assert.equal(snapshot.decks[0].loadGeneration,start.decks[0].loadGeneration);assert.equal(snapshot.decks[0].playing,true);
@@ -13,28 +14,33 @@ module.exports=async function({js,command,until,checks,start,idA,dir,window}) {
  await js("document.querySelector('.canvas-widget [data-field=playing]').click()");
  await until(async()=>(await command({type:'status'})).snapshot.decks[0].playing,'canvas native play');
  await js("document.querySelector('[data-editor=edit]').click();document.querySelector('[data-editor=add][data-kind=browser]').click();document.querySelector('[data-editor=add][data-kind=browser]').click()");
- assert.equal(await js("document.querySelectorAll('.canvas-stage [data-action=library-import][data-kind=folder]').length"),2);
- assert.deepEqual(await js("[...document.querySelectorAll('.canvas-stage .crate-name')].map(e=>e.textContent)"),['All local tracks','All local tracks']);
- assert.deepEqual(await js("[...document.querySelectorAll('.canvas-stage .track-count')].map(e=>e.textContent)"),['1 track','1 track']);
+ assert.equal(await js("document.querySelectorAll('.canvas-stage .local-library').length"),2);
+ assert.deepEqual(await js("[...document.querySelectorAll('.canvas-stage .local-library')].map(p=>p.querySelectorAll('tr[data-track-id]:not([hidden])').length)"),[1,1]);
+ assert.equal(await js("document.querySelectorAll('.canvas-stage [data-action=library-import],.canvas-stage .crate-name,.canvas-stage .track-count').length"),0);
  await js("document.querySelector('[data-editor=creator]').click()");
  const kitFile=path.join(dir,'canvas-creator-kit.json');window.webContents.session.once('will-download',(_event,item)=>item.setSavePath(kitFile));
  await js("document.querySelector('[data-editor=download-kit]').click()");
  const kit=await until(async()=>{try{return JSON.parse(await fs.readFile(kitFile,'utf8'));}catch{return false;}},'real desktop kit download');
  assert.equal(kit.format,'deckcraft.creator-kit');assert.ok(!JSON.stringify(kit).includes(idA));
- await js("document.querySelector('[data-editor=close-creator]').click();{const p=document.querySelector('.layout-picker');p.value='studio-sync';p.dispatchEvent(new Event('change',{bubbles:true}));}");
+ await js("document.querySelector('[data-editor=close-creator]').click();document.querySelector('[data-action=\"mode\"][data-value=\"perform\"]').click();");
  snapshot=(await command({type:'status'})).snapshot;assert.equal(snapshot.engineId,start.engineId);assert.equal(snapshot.decks[0].loadGeneration,start.decks[0].loadGeneration);
- checks.push('Canvas editing/Perform controls preserve native source; duplicate browsers retain file/folder import and shared collection state; sandboxed creator-kit download excludes library IDs');
- await js("document.querySelector('.canvas-entry').click();document.querySelector('[data-editor=creator]').click();{const x=document.querySelector('.design-json');x.value=JSON.stringify(JSON.parse(localStorage.getItem('deck-craft.workspace.v1')).snapshot.items.find(i=>i.design.kind==='deck').design);x.dispatchEvent(new Event('input',{bubbles:true}));}document.querySelector('[data-editor=validate]').click()");
+ checks.push('Canvas editing/Perform controls preserve native source; duplicate table-only browsers show the same local tracks without restoring retired toolbar controls; sandboxed creator-kit download excludes library IDs');
+ await pointerClick(".canvas-entry");
+ await js("document.querySelector('[data-editor=creator]').click();{const x=document.querySelector('.design-json');x.value=JSON.stringify(JSON.parse(localStorage.getItem('deck-craft.workspace.v1')).snapshot.items.find(i=>i.design.kind==='deck').design);x.dispatchEvent(new Event('input',{bubbles:true}));}document.querySelector('[data-editor=validate]').click()");
  assert.equal(await js("document.querySelectorAll('.design-preview [data-action],.design-preview [data-field],.design-preview [data-deck],.design-preview [data-track-id]').length"),0);
  const generation=snapshot.decks[0].loadGeneration;
- await js("document.querySelector('.native-import').click()");
+ // Keep the validated subtree, but leave its modal before opening Settings.
+ await js("document.querySelector('[data-editor=close-creator]').click()");
+ await settingsClick(".native-import");
+ // Reopening the creator intentionally resets review; validate again before preview assertions.
+ await js("document.querySelector('[data-editor=creator]').click();document.querySelector('[data-editor=validate]').click()");
  await until(async()=>{const d=(await command({type:'status'})).snapshot.decks[0];return d.trackId===idA&&!d.loading&&d.loadGeneration>generation;},'explicit native reload with validated preview present');
  await until(()=>js("!document.querySelector('.native-import').disabled"),'preview-present load transaction finished');
  assert.equal(await js("JSON.parse(localStorage.getItem('deck-craft.ui.v1')).decks.A.trackId"),idA);
  const toggle="document.querySelector('.canvas-stage section.deck[data-deck=A] [data-field=playing]').click()";
  await js(toggle);
  await until(async()=>(await command({type:'status'})).snapshot.decks[0].playing,'native play with creator dialog open');
- await until(()=>js("Number(document.querySelector('.canvas-stage section.deck[data-deck=A] .wave-seek').value)>.2"),'visible source-clock updates with validated preview');
+ await until(()=>js("(()=>{const text=document.querySelector('.canvas-stage section.deck[data-deck=A] .elapsed').textContent;const [minutes,seconds]=text.split(':');return Number(minutes)*60+Number(seconds)>.2})()"),'visible source-clock updates with validated preview');
  assert.equal(await js("[...document.querySelectorAll('.design-preview button,.design-preview input,.design-preview select')].every(e=>e.disabled)"),true);
  await js("document.querySelector('[data-editor=close-creator]').click()");
  assert.equal(await js("document.querySelectorAll('.design-preview .preview-component').length"),1,'closed dialog retains the preview subtree');
@@ -47,6 +53,6 @@ module.exports=async function({js,command,until,checks,start,idA,dir,window}) {
  assert.ok(await js("document.querySelectorAll('.design-preview tr').length>0"));
  assert.equal(await js("document.querySelector('.design-preview').textContent.includes('Generated local')"),false);
  assert.equal(await js("document.querySelectorAll('.design-preview tr[data-track-id]').length"),0);
- await js("document.querySelector('.design-preview tr').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));document.querySelector('[data-editor=close-creator]').click();{const p=document.querySelector('.layout-picker');p.value='studio-sync';p.dispatchEvent(new Event('change',{bubbles:true}));}");
+ await js("document.querySelector('.design-preview tr').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));document.querySelector('[data-editor=close-creator]').click();document.querySelector('[data-action=\"mode\"][data-value=\"perform\"]').click();");
  checks.push('Validated synthetic previews remain inert through native reload/play/clock updates and after dialog close; browser previews exclude local metadata and Enter emits no live action');
 };

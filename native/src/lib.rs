@@ -1,4 +1,5 @@
 pub mod dsp;
+pub mod fullkill;
 pub mod stream;
 use rodio::{Decoder, Source};
 use serde::{Deserialize, Serialize};
@@ -9,6 +10,106 @@ use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 pub const MAX_FRAME: usize = 16 * 1024;
 pub const MAX_FILE: u64 = 512 * 1024 * 1024;
 pub const MAX_DURATION: f64 = 7200.0;
+/// Unsolicited state snapshots carry the consumed-frame position. While any deck plays they follow the
+/// approximately 60 Hz; while a deck is only preparing they confirm progress; otherwise they are a slow
+/// heartbeat (the host watchdog needs a message within three seconds). The loop blocks on its channel with
+/// a timeout for the remaining time, so none of this is a busy loop, and no file, decode or device-callback
+/// work happens on this cadence.
+pub const SNAPSHOT_PLAYING_MS: u64 = 16;
+pub const SNAPSHOT_LOADING_MS: u64 = 50;
+pub const SNAPSHOT_IDLE_MS: u64 = 250;
+pub fn snapshot_interval(playing: bool, loading: bool) -> std::time::Duration {
+    std::time::Duration::from_millis(if playing {
+        SNAPSHOT_PLAYING_MS
+    } else if loading {
+        SNAPSHOT_LOADING_MS
+    } else {
+        SNAPSHOT_IDLE_MS
+    })
+}
+
+/// Persisted waveform: exactly this many peaks per track (validated by the desktop library).
+pub const PEAK_BINS: usize = 512;
+/// Session-only detail envelope: about 64 bins per second of audio, clamped to this range. At most
+/// two 8-bit values per bin (peak and RMS) cross the pipe, never more than 64 KiB of raw data.
+pub const DETAIL_MIN_BINS: usize = 512;
+pub const DETAIL_MAX_BINS: usize = 32768;
+pub const DETAIL_BINS_PER_SECOND: f64 = 64.0;
+pub fn detail_bin_count(duration: f64) -> usize {
+    if !duration.is_finite() || duration <= 0.0 {
+        return DETAIL_MIN_BINS;
+    }
+    ((duration * DETAIL_BINS_PER_SECOND).ceil() as usize).clamp(DETAIL_MIN_BINS, DETAIL_MAX_BINS)
+}
+pub struct Waveform {
+    pub peaks: Vec<f32>,
+    pub detail_peak: Vec<u8>,
+    pub detail_rms: Vec<u8>,
+}
+/// One pass over decoded interleaved samples. `count` is the expected number of samples (duration x
+/// rate x channels). Returns None as soon as `cancelled` reports true (checked every 8192 samples).
+/// Values are measured from the decoded PCM, never interpolated: peak is the largest absolute
+/// sample in the bin; RMS is the root mean square of the bin's samples. Digital silence is exactly 0.
+pub fn analyze_waveform(
+    samples: impl Iterator<Item = f32>,
+    count: f64,
+    detail_bins: usize,
+    mut cancelled: impl FnMut() -> bool,
+) -> Option<Waveform> {
+    let detail_bins = detail_bins.clamp(1, DETAIL_MAX_BINS);
+    let count = count.max(1.0);
+    let mut peaks = vec![0.0f32; PEAK_BINS];
+    let mut detail_peak = vec![0.0f32; detail_bins];
+    let mut squares = vec![0.0f64; detail_bins];
+    let mut seen = vec![0u32; detail_bins];
+    for (n, sample) in samples.enumerate() {
+        if n % 8192 == 0 && cancelled() {
+            return None;
+        }
+        let u = n as f64 / count;
+        let bin = ((u * PEAK_BINS as f64).floor() as usize).min(PEAK_BINS - 1);
+        let fine = ((u * detail_bins as f64).floor() as usize).min(detail_bins - 1);
+        if sample.is_finite() {
+            let magnitude = sample.abs().min(1.0);
+            peaks[bin] = peaks[bin].max(magnitude);
+            // An estimated duration can be shorter than the decode. Samples past the expected end
+            // belong to no detail bin; folding them into the last one would draw a false tail.
+            if u < 1.0 {
+                detail_peak[fine] = detail_peak[fine].max(magnitude);
+                squares[fine] += (magnitude as f64) * (magnitude as f64);
+            }
+        }
+        if u < 1.0 {
+            seen[fine] = seen[fine].saturating_add(1);
+        }
+    }
+    let quantize = |v: f64| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+    let detail_rms = squares
+        .iter()
+        .zip(&seen)
+        .map(|(sum, n)| quantize(if *n == 0 { 0.0 } else { (sum / *n as f64).sqrt() }))
+        .collect::<Vec<u8>>();
+    let detail_peak = detail_peak.iter().map(|v| quantize(*v as f64)).collect::<Vec<u8>>();
+    // Rounding keeps RMS <= peak per bin; enforce it for the wire format regardless.
+    let detail_rms = detail_rms.iter().zip(&detail_peak).map(|(r, p)| (*r).min(*p)).collect();
+    Some(Waveform {
+        peaks,
+        detail_peak,
+        detail_rms,
+    })
+}
+pub fn base64(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        out.push(TABLE[(b[0] >> 2) as usize] as char);
+        out.push(TABLE[(((b[0] & 3) << 4) | (b[1] >> 4)) as usize] as char);
+        out.push(if chunk.len() > 1 { TABLE[(((b[1] & 15) << 2) | (b[2] >> 6)) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { TABLE[(b[2] & 63) as usize] as char } else { '=' });
+    }
+    out
+}
 pub fn fatal_output_error(kind: rodio::CpalErrorKind) -> bool {
     !matches!(
         kind,
@@ -51,23 +152,31 @@ pub enum Command {
         deck: String,
         value: f64,
     },
-    /// Channel gain trim before the EQ (0..=100, 50 neutral, 0 mutes).
+    Assign { deck: String, side: String },
+    Crossfader {
+        value: f64,
+    },
+    /// Per-deck input trim, -12..+12 dB (0..=100, 50 = 0 dB).
     Gain {
         deck: String,
         value: f64,
     },
-    /// One EQ band (`hi`, `mid`, `low`): 0..=100, 50 neutral, exactly 0 removes the band.
-    Eq {
+    /// Three-band EQ: high shelf, mid peak, low shelf (0..=100, 50 = flat).
+    Hi {
         deck: String,
-        band: String,
         value: f64,
     },
-    /// Which side of the crossfader the channel follows: `left`, `thru` or `right`.
-    Assign {
+    Mid {
         deck: String,
-        side: String,
+        value: f64,
     },
-    Crossfader {
+    Low {
+        deck: String,
+        value: f64,
+    },
+    /// Bipolar sweep filter: below 50 low-pass, above 50 high-pass, exactly 50 = bypass.
+    Filter {
+        deck: String,
         value: f64,
     },
     Shutdown,
@@ -85,14 +194,6 @@ pub fn deck_index(deck: &str) -> Result<usize, &'static str> {
         "C" => Ok(2),
         "D" => Ok(3),
         _ => Err("invalid_deck"),
-    }
-}
-pub fn band_index(band: &str) -> Result<usize, &'static str> {
-    match band {
-        "low" => Ok(0),
-        "mid" => Ok(1),
-        "hi" => Ok(2),
-        _ => Err("invalid_band"),
     }
 }
 pub fn validate(command: &Command) -> Result<(), &'static str> {
@@ -113,28 +214,24 @@ pub fn validate(command: &Command) -> Result<(), &'static str> {
             }
             Ok(())
         }
-        Command::Gain { deck, value } => {
-            deck_index(deck)?;
-            if !value.is_finite() || !(0.0..=100.0).contains(value) {
-                return Err("invalid_gain");
-            }
-            Ok(())
-        }
-        Command::Eq { deck, band, value } => {
-            deck_index(deck)?;
-            band_index(band)?;
-            if !value.is_finite() || !(0.0..=100.0).contains(value) {
-                return Err("invalid_eq");
-            }
-            Ok(())
-        }
         Command::Assign { deck, side } => {
             deck_index(deck)?;
-            dsp::Side::parse(side).map(|_| ())
+            crate::fullkill::Side::parse(side).map(|_| ())
         }
         Command::Crossfader { value } => {
             if !value.is_finite() || !(0.0..=100.0).contains(value) {
                 return Err("invalid_crossfader");
+            }
+            Ok(())
+        }
+        Command::Gain { deck, value }
+        | Command::Hi { deck, value }
+        | Command::Mid { deck, value }
+        | Command::Low { deck, value }
+        | Command::Filter { deck, value } => {
+            deck_index(deck)?;
+            if !value.is_finite() || !(0.0..=100.0).contains(value) {
+                return Err("invalid_mixer_value");
             }
             Ok(())
         }
@@ -246,6 +343,23 @@ pub fn decode(file: File) -> Result<rodio::Decoder<std::io::BufReader<File>>, &'
 mod tests {
     use super::*;
     #[test]
+    fn snapshot_cadence_is_bounded_and_idle_stays_inside_the_watchdog() {
+        use std::time::Duration;
+        assert_eq!(snapshot_interval(true, false), Duration::from_millis(16));
+        assert_eq!(snapshot_interval(true, true), Duration::from_millis(16));
+        assert_eq!(snapshot_interval(false, true), Duration::from_millis(50));
+        assert_eq!(snapshot_interval(false, false), Duration::from_millis(250));
+        for (playing, loading) in [(true, false), (false, true), (false, false)] {
+            let interval = snapshot_interval(playing, loading);
+            assert!(interval >= Duration::from_millis(8), "never a busy loop");
+            assert!(interval < Duration::from_millis(1000), "well inside the 3 s host watchdog");
+        }
+        assert!(snapshot_interval(true, false) < snapshot_interval(false, true));
+        assert!(snapshot_interval(false, true) < snapshot_interval(false, false));
+    }
+
+
+    #[test]
     fn recoverable_device_notices_do_not_disconnect_output() {
         assert!(!fatal_output_error(rodio::CpalErrorKind::RealtimeDenied));
         assert!(!fatal_output_error(rodio::CpalErrorKind::Xrun));
@@ -285,6 +399,20 @@ mod tests {
             .is_err()
         );
         assert!(validate(&Command::Crossfader { value: -1.0 }).is_err());
+        for (command, ok) in [
+            (Command::Gain { deck: "A".into(), value: 50.0 }, true),
+            (Command::Hi { deck: "D".into(), value: 0.0 }, true),
+            (Command::Mid { deck: "B".into(), value: 100.0 }, true),
+            (Command::Low { deck: "C".into(), value: 12.5 }, true),
+            (Command::Filter { deck: "A".into(), value: 50.0 }, true),
+            (Command::Gain { deck: "E".into(), value: 50.0 }, false),
+            (Command::Hi { deck: "A".into(), value: -0.1 }, false),
+            (Command::Mid { deck: "A".into(), value: 100.1 }, false),
+            (Command::Low { deck: "A".into(), value: f64::NAN }, false),
+            (Command::Filter { deck: "A".into(), value: f64::INFINITY }, false),
+        ] {
+            assert_eq!(validate(&command).is_ok(), ok, "{command:?}");
+        }
         assert!(
             validate(&Command::Seek {
                 deck: "D".into(),
@@ -292,44 +420,6 @@ mod tests {
             })
             .is_ok()
         );
-    }
-    #[test]
-    fn mixer_commands_are_strict_and_bounded() {
-        let parse = |text: &str| serde_json::from_str::<Request>(text);
-        let eq = |deck: &str, band: &str, value: f64| Command::Eq { deck: deck.into(), band: band.into(), value };
-        for band in ["hi", "mid", "low"] {
-            for value in [0.0, 0.5, 50.0, 100.0] {
-                assert!(validate(&eq("A", band, value)).is_ok(), "{band} {value}");
-            }
-            assert_eq!(validate(&eq("A", band, -0.001)), Err("invalid_eq"));
-            assert_eq!(validate(&eq("A", band, 100.001)), Err("invalid_eq"));
-            assert_eq!(validate(&eq("A", band, f64::NAN)), Err("invalid_eq"));
-            assert_eq!(validate(&eq("A", band, f64::INFINITY)), Err("invalid_eq"));
-            assert_eq!(validate(&eq("Z", band, 50.0)), Err("invalid_deck"));
-        }
-        for band in ["HI", "high", "bass", "", "filter", "gain"] {
-            assert_eq!(validate(&eq("B", band, 50.0)), Err("invalid_band"), "{band:?}");
-        }
-        let gain = |value: f64| Command::Gain { deck: "C".into(), value };
-        assert!(validate(&gain(0.0)).is_ok() && validate(&gain(100.0)).is_ok());
-        assert_eq!(validate(&gain(100.5)), Err("invalid_gain"));
-        assert_eq!(validate(&gain(f64::NEG_INFINITY)), Err("invalid_gain"));
-        for deck in ["A", "B", "C", "D"] {
-            for side in ["left", "thru", "right"] {
-                assert!(validate(&Command::Assign { deck: deck.into(), side: side.into() }).is_ok());
-            }
-        }
-        for side in ["Left", "both", "", "master", "right "] {
-            assert_eq!(validate(&Command::Assign { deck: "A".into(), side: side.into() }), Err("invalid_assignment"), "{side:?}");
-        }
-        assert_eq!(validate(&Command::Assign { deck: "E".into(), side: "left".into() }), Err("invalid_deck"));
-        assert!(parse(r#"{"id":"x","command":{"type":"eq","deck":"A","band":"hi","value":0}}"#).is_ok());
-        assert!(parse(r#"{"id":"x","command":{"type":"eq","deck":"A","band":"hi","value":"0"}}"#).is_err());
-        assert!(parse(r#"{"id":"x","command":{"type":"eq","deck":"A","band":"hi"}}"#).is_err());
-        assert!(parse(r#"{"id":"x","command":{"type":"eq","deck":"A","band":"hi","value":1,"extra":true}}"#).is_err());
-        assert!(parse(r#"{"id":"x","command":{"type":"assign","deck":"A","side":"left","path":"/x"}}"#).is_err());
-        assert!(parse(r#"{"id":"x","command":{"type":"gain","deck":"A","value":null}}"#).is_err());
-        assert!(parse(r#"{"id":"x","command":{"type":"assign","deck":"A","side":1}}"#).is_err());
     }
     #[test]
     fn strict_semantic_schema() {
@@ -351,6 +441,20 @@ mod tests {
             )
             .is_err()
         );
+    }
+    #[test]
+    fn mixer_commands_use_the_same_strict_semantic_shape() {
+        for kind in ["gain", "hi", "mid", "low", "filter"] {
+            let ok = format!(r#"{{"id":"x","command":{{"type":"{kind}","deck":"B","value":37.5}}}}"#);
+            assert!(serde_json::from_str::<Request>(&ok).is_ok(), "{kind}");
+            for bad in [
+                format!(r#"{{"id":"x","command":{{"type":"{kind}","deck":"B","value":"37"}}}}"#),
+                format!(r#"{{"id":"x","command":{{"type":"{kind}","deck":"B","value":1,"path":"/x"}}}}"#),
+                format!(r#"{{"id":"x","command":{{"type":"{kind}","value":1}}}}"#),
+            ] {
+                assert!(serde_json::from_str::<Request>(&bad).is_err(), "{bad}");
+            }
+        }
     }
     #[test]
     fn bounds_frames_before_allocation() {
@@ -398,6 +502,115 @@ mod tests {
         let mut bad = good.clone();
         bad.ino = "0".into();
         assert!(checked_file(path.to_str().unwrap(), &bad).is_err());
+        std::fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn base64_matches_reference_vectors() {
+        assert_eq!(base64(b""), "");
+        assert_eq!(base64(b"f"), "Zg==");
+        assert_eq!(base64(b"fo"), "Zm8=");
+        assert_eq!(base64(b"foo"), "Zm9v");
+        assert_eq!(base64(b"foobar"), "Zm9vYmFy");
+        assert_eq!(base64(&[0xfb, 0xff, 0xfe]), "+//+");
+    }
+    #[test]
+    fn detail_resolution_is_bounded_and_scales_with_duration() {
+        assert_eq!(detail_bin_count(f64::NAN), DETAIL_MIN_BINS);
+        assert_eq!(detail_bin_count(1.0), DETAIL_MIN_BINS);
+        assert_eq!(detail_bin_count(240.0), 15360);
+        assert_eq!(detail_bin_count(MAX_DURATION), DETAIL_MAX_BINS);
+        assert!(detail_bin_count(1e12) <= DETAIL_MAX_BINS);
+        // Two 8-bit channels per bin stay far below the child-output safety limit.
+        assert!(base64(&vec![255u8; DETAIL_MAX_BINS]).len() * 2 < 128 * 1024);
+    }
+    #[test]
+    fn analysis_measures_silence_tone_and_a_single_transient_without_interpolation() {
+        // 10 s mono at 1 kHz: 4 s silence, 4 s of +-0.5 square wave, one full-scale click at 7 s.
+        let rate = 1000usize;
+        let samples: Vec<f32> = (0..10 * rate)
+            .map(|i| {
+                if i == 7 * rate + 3 {
+                    1.0
+                } else if (4 * rate..8 * rate).contains(&i) {
+                    if i % 2 == 0 { 0.5 } else { -0.5 }
+                } else {
+                    0.0
+                }
+            })
+            .collect();
+        let bins = detail_bin_count(10.0);
+        let w = analyze_waveform(samples.iter().copied(), samples.len() as f64, bins, || false).unwrap();
+        assert_eq!((w.peaks.len(), w.detail_peak.len(), w.detail_rms.len()), (PEAK_BINS, bins, bins));
+        let at = |seconds: f64| ((seconds / 10.0) * bins as f64) as usize;
+        assert!(w.detail_peak[..at(3.9)].iter().all(|v| *v == 0) && w.detail_rms[..at(3.9)].iter().all(|v| *v == 0), "silence is exactly 0");
+        assert!(w.detail_peak[at(8.2)..].iter().all(|v| *v == 0));
+        // Away from the click the tone reads 0.5 peak and 0.5 RMS (square wave).
+        for i in at(4.2)..at(6.8) {
+            assert_eq!(w.detail_peak[i], 128);
+            assert_eq!(w.detail_rms[i], 128);
+        }
+        // The click occupies exactly its bin: full-scale peak, but a tiny RMS.
+        let click = at(7.003);
+        assert_eq!(w.detail_peak[click], 255);
+        assert!(w.detail_rms[click] < 255 && w.detail_rms[click] >= 128);
+        assert!(w.detail_peak[click - 3] == 128 && w.detail_peak[click + 3] == 128);
+        assert!(w.detail_rms.iter().zip(&w.detail_peak).all(|(r, p)| r <= p));
+        // The persisted peaks keep the original meaning (max absolute sample per 1/512).
+        assert_eq!(w.peaks[0], 0.0);
+        assert!(w.peaks[(7.003 / 10.0 * 512.0) as usize] == 1.0);
+    }
+    #[test]
+    fn analysis_ignores_nonfinite_samples_clamps_and_can_be_cancelled() {
+        let samples = vec![f32::NAN, f32::INFINITY, -4.0, 0.25, f32::NEG_INFINITY];
+        let w = analyze_waveform(samples.iter().copied(), 5.0, 512, || false).unwrap();
+        assert!(w.peaks.iter().all(|p| p.is_finite() && *p <= 1.0));
+        assert_eq!(w.detail_peak.iter().max(), Some(&255));
+        // Too few samples are valid (short decode): trailing bins stay silent, not interpolated.
+        let short = analyze_waveform([0.5f32; 10].into_iter(), 1000.0, 512, || false).unwrap();
+        assert!(short.detail_peak[300..].iter().all(|v| *v == 0));
+        // A cancelled generation produces nothing.
+        let mut calls = 0;
+        assert!(analyze_waveform(vec![0.1f32; 100_000].into_iter(), 100_000.0, 512, || { calls += 1; calls > 1 }).is_none());
+    }
+    #[test]
+    fn detail_does_not_fold_samples_past_the_expected_length_into_the_last_bin() {
+        // The decode is twice as long as the (estimated) duration: the extra loud half is ignored by
+        // the detail envelope, whose last bin stays silent, while the persisted peaks keep their meaning.
+        let samples: Vec<f32> = (0..2000).map(|i| if i < 1000 { 0.0 } else { 0.9 }).collect();
+        let w = analyze_waveform(samples.iter().copied(), 1000.0, 512, || false).unwrap();
+        assert!(w.detail_peak.iter().all(|v| *v == 0) && w.detail_rms.iter().all(|v| *v == 0));
+        assert_eq!(w.peaks[PEAK_BINS - 1], 0.9);
+    }
+    #[test]
+    fn analysis_of_a_really_decoded_file_reports_its_loud_and_silent_regions() {
+        let parent = std::env::var_os("TMPDIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::env::current_dir().unwrap().join("target"));
+        std::fs::create_dir_all(&parent).unwrap();
+        let path = parent.join(format!("deckcraft-wave-fixture-{}.wav", std::process::id()));
+        {
+            let mut w = hound::WavWriter::create(&path, hound::WavSpec { channels: 2, sample_rate: 8000, bits_per_sample: 16, sample_format: hound::SampleFormat::Int }).unwrap();
+            for i in 0..8000 * 6 {
+                // 0-2 s silence, 2-4 s tone at about 0.5, 4-6 s quiet tone at about 0.05.
+                let amp = if i < 16000 { 0.0 } else if i < 32000 { 0.5 } else { 0.05 };
+                let v = ((i as f64 * 440.0 * std::f64::consts::TAU / 8000.0).sin() * amp * 32767.0) as i16;
+                w.write_sample(v).unwrap();
+                w.write_sample(v).unwrap();
+            }
+            w.finalize().unwrap();
+        }
+        let f = File::open(&path).unwrap();
+        let id = identity(&f);
+        let decoder = decode(checked_file(path.to_str().unwrap(), &id).unwrap()).unwrap();
+        let duration = decoder.total_duration().unwrap().as_secs_f64();
+        let count = duration * decoder.sample_rate().get() as f64 * decoder.channels().get() as f64;
+        let bins = detail_bin_count(duration);
+        let w = analyze_waveform(decoder, count, bins, || false).unwrap();
+        let at = |seconds: f64| (seconds / duration * bins as f64) as usize;
+        assert!(w.detail_peak[..at(1.9)].iter().all(|v| *v == 0));
+        assert!(w.detail_peak[at(2.1)..at(3.9)].iter().all(|v| (120..=130).contains(v)));
+        assert!(w.detail_peak[at(4.1)..at(5.9)].iter().all(|v| (10..=16).contains(v)));
+        assert!(w.detail_rms[at(2.1)..at(3.9)].iter().all(|v| (80..=130).contains(v)));
         std::fs::remove_file(path).unwrap();
     }
 }

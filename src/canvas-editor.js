@@ -1,14 +1,14 @@
 import { createSession } from './session.js';
-import { createComponent, parseDesignWithNotice, creatorKit, minSize, DESIGN_LIMIT } from './workspace.js';
+import { createComponent, parseDesignWithNotice, creatorKit, minSize, resizeItem, ITEM_BOUNDS, DESIGN_LIMIT } from './workspace.js';
 import { renderCanvasContent, themeAttribute } from './canvas-view.js';
-import { escapeHTML } from './components.js';
+import { escapeHTML, paintFixtureWaves } from './components.js';
 
 export const CANVAS_UNAVAILABLE='[data-field="sync"],[data-field="headphone"],[data-field="loopEnabled"],[data-field="pitch"],[data-action="loop-size"],[data-action="toggle-fx"],[data-action="fx-wet"],[data-field="gain"],[data-field="hi"],[data-field="mid"],[data-field="low"],[data-field="filter"]';
 export function renderDesignPreview(design,variant='paused') {
  const fixture=createSession();
  for(const d of Object.values(fixture.decks)){d.playing=variant==='playing';if(variant==='empty'){d.position=0;d.cues=[0,0,0,0];}}
  const designs=design.format==='deckcraft.workspace'?design.items.map(item=>item.design):[design];
- return `<p class="preview-caption">SYNTHETIC ${escapeHTML(variant.toUpperCase())} FIXTURE · NOT AUDIO</p>`+designs.map(d=>`<div class="preview-component canvas-widget" data-kind="${d.kind}" data-waveform="${d.parts.waveform}" data-cues="${d.parts.cues}" data-artwork="${d.parts.artwork}"${themeAttribute(d)}><h3>${escapeHTML(d.name)}</h3>${variant==='empty'?'<p>No track loaded · synthetic empty state</p>':variant==='unavailable'?'<p>Engine unavailable · controls disabled</p>':renderCanvasContent(d,fixture,{preview:true}).replace(/ data-[a-z0-9-]+="[^"]*"/g,'')}</div>`).join('');
+ return `<p class="preview-caption">SYNTHETIC ${escapeHTML(variant.toUpperCase())} FIXTURE · NOT AUDIO</p>`+designs.map(d=>`<div class="preview-component canvas-widget" data-kind="${d.kind}" data-waveform="${d.parts.waveform}" data-cues="${d.parts.cues}" data-artwork="${d.parts.artwork}"${themeAttribute(d)}><h3>${escapeHTML(d.name)}</h3>${variant==='empty'?'<p>No track loaded · synthetic empty state</p>':variant==='unavailable'?'<p>Engine unavailable · controls disabled</p>':renderCanvasContent(d,fixture,{preview:true}).replace(/ (?:data-[a-z0-9-]+|draggable)="[^"]*"/g,'').replace(/ tabindex="[^"]*"| role="slider"/g,'')}</div>`).join('');
 }
 export function downloadDesign(name,value) {
  const link=document.createElement('a');link.download=name;link.href='data:application/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(value,null,2));document.body.append(link);link.click();link.remove();
@@ -24,21 +24,45 @@ export class CanvasEditor {
   root.addEventListener('pointerdown',event=>this.pointerDown(event));
   document.addEventListener('pointermove',event=>this.pointerMove(event));
   document.addEventListener('pointerup',event=>this.pointerUp(event));
-  document.addEventListener('pointercancel',()=>{if(this.drag){this.drag=null;this.redraw();}});
+  document.addEventListener('pointercancel',()=>this.cancelDrag());
+  window.addEventListener('blur',()=>this.cancelDrag());
   root.addEventListener('dragstart',event=>{const button=event.target.closest('[draggable][data-kind]');if(!button)return;if(!this.ui.editing){event.preventDefault();return;}event.dataTransfer.setData('application/x-deckcraft-kind',button.dataset.kind);event.dataTransfer.effectAllowed='copy';});
   root.addEventListener('dragover',event=>{if(this.ui.editing&&event.target.closest('.canvas-stage')&&event.dataTransfer.types.includes('application/x-deckcraft-kind'))event.preventDefault();});
   root.addEventListener('drop',event=>{const stage=event.target.closest('.canvas-stage');if(!stage||!this.ui.editing)return;const kind=event.dataTransfer.getData('application/x-deckcraft-kind');if(!kind)return;event.preventDefault();const rect=stage.getBoundingClientRect();this.add(kind,{x:this.coordinate(event.clientX-rect.left,2400),y:this.coordinate(event.clientY-rect.top,4800)});});
   document.addEventListener('keydown',event=>{
-   if(!store.getWorkspace().active||!this.ui.editing||event.target.closest('input,textarea,select,dialog'))return;
+   if(!store.getWorkspace().active||!this.ui.editing)return;
+   if(this.drag){if(event.key==='Escape'){event.preventDefault();this.cancelDrag();}return;}
+   if(event.target.closest('input,textarea,select,dialog'))return;
    if((event.ctrlKey||event.metaKey)&&['z','y'].includes(event.key.toLowerCase())){event.preventDefault();this.act({type:event.key.toLowerCase()==='y'||event.shiftKey?'redo':'undo'});}
-   if(event.key==='Delete'&&this.ui.selected){event.preventDefault();this.act({type:'remove',id:this.ui.selected});}
-   const grip=event.target.closest('.widget-grip');
-   if(grip&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){event.preventDefault();const item=this.item(grip.dataset.id),step=event.shiftKey?100:20;this.act({type:'item',id:item.id,patch:{x:Math.max(0,Math.min(2400,item.x+(event.key==='ArrowRight'?step:event.key==='ArrowLeft'?-step:0))),y:Math.max(0,Math.min(4800,item.y+(event.key==='ArrowDown'?step:event.key==='ArrowUp'?-step:0)))}});this.root.querySelector(`[data-id="${item.id}"]`)?.focus();}
-   if(grip&&['Enter',' '].includes(event.key)){event.preventDefault();this.ui.selected=grip.dataset.id;this.redraw();}
+   if(event.key==='Delete'&&this.item()){event.preventDefault();this.remove();}
+   const grip=event.target.matches?.('.widget-grip')?event.target:null;
+   if(grip&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){
+    event.preventDefault();const item=this.item(grip.dataset.id);if(!item)return;
+    const step=event.shiftKey?100:20,dx=event.key==='ArrowRight'?step:event.key==='ArrowLeft'?-step:0,dy=event.key==='ArrowDown'?step:event.key==='ArrowUp'?-step:0;
+    // Alt+arrow resizes from the bottom-right corner; plain arrows move. Both use the same bounds as the pointer.
+    this.commit(item.id,event.altKey?resizeItem(item,'se',dx,dy,{snap:store.getWorkspace().snapshot.snap}):{x:Math.max(0,Math.min(ITEM_BOUNDS.x,item.x+dx)),y:Math.max(0,Math.min(ITEM_BOUNDS.y,item.y+dy))});
+    this.root.querySelector(`.widget-grip[data-id="${item.id}"]`)?.focus();
+   }
+   if(grip&&['Enter',' '].includes(event.key)){event.preventDefault();this.select(grip.dataset.id);}
   });
  }
  item(id=this.ui.selected) {return this.store.getWorkspace().snapshot.items.find(item=>item.id===id);}
  act(action) {try{this.store.dispatchWorkspace(action);return true;}catch(error){this.say(error.message);return false;}}
+ /** Selection is a class toggle, not a redraw, so a gesture that begins on a handle keeps its pointer capture. */
+ select(id) {
+  this.ui.selected=id;
+  for(const element of this.root.querySelectorAll('.canvas-widget[data-item-id]'))element.classList.toggle('selected',element.dataset.itemId===id);
+ }
+ remove() {
+  const id=this.ui.selected;if(!this.item(id))return;
+  this.ui.selected=null;this.act({type:'remove',id});
+ }
+ /** Applies layout geometry only when it differs, so a click or a clamped drag never adds an undo entry. */
+ commit(id,patch) {
+  const live=this.item(id);
+  if(!live||!Object.entries(patch).some(([key,value])=>live[key]!==value))return false;
+  return this.act({type:'item',id,patch});
+ }
  beforeMount() {
   const viewport=this.root.querySelector('.canvas-viewport');if(viewport)this.scroll={left:viewport.scrollLeft,top:viewport.scrollTop};
   const draft=this.root.querySelector('.design-json');if(draft)this.draft=draft.value;
@@ -65,13 +89,14 @@ export class CanvasEditor {
   if(action==='open-canvas'){this.act({type:'active',value:true});return;}
   if(action==='edit'||action==='perform'){this.ui.editing=action==='edit';this.redraw();return;}
   if(!this.ui.editing)return;
-  if(action==='select'){if(this.suppressClick){this.suppressClick=false;return;}this.ui.selected=button.dataset.id;this.redraw();return;}
+  if(action==='select'){if(this.suppressClick){this.suppressClick=false;return;}this.select(button.dataset.id);return;}
+  if(['duplicate','remove','save-template'].includes(action)&&button.dataset.id)this.select(button.dataset.id);
   if(action==='add'){this.add(button.dataset.kind);return;}
   if(action==='add-template'){if(this.act({type:action,index,deck:this.ui.deck})){this.ui.selected=this.store.getWorkspace().snapshot.items.at(-1).id;this.redraw();}return;}
   if(['delete-template','delete-preset','load-preset'].includes(action)){this.act({type:action,index});return;}
   if(['undo','redo','clear'].includes(action)){if(action==='clear'&&this.store.getWorkspace().snapshot.items.length&&!confirm('Start an empty canvas? Your audio and saved components stay intact. Undo restores this arrangement.'))return;this.act({type:action});return;}
-  if(action==='remove'){this.act({type:'remove',id:this.ui.selected});return;}
-  if(action==='duplicate'){const item=this.item();if(item){this.act({type:'import',text:JSON.stringify(item.design)});this.ui.selected=this.store.getWorkspace().snapshot.items.at(-1).id;this.redraw();}return;}
+  if(action==='remove'){this.remove();return;}
+  if(action==='duplicate'){const item=this.item();if(item&&this.act({type:'import',text:JSON.stringify(item.design)})){this.ui.selected=this.store.getWorkspace().snapshot.items.at(-1).id;this.redraw();}return;}
   if(action==='save-template'){this.name(action,'Save reusable component',this.item()?.design.name||'My component');return;}
   if(action==='save-preset'){this.name(action,'Save workspace preset',this.store.getWorkspace().snapshot.name);return;}
   if(action==='confirm-name'){
@@ -79,7 +104,6 @@ export class CanvasEditor {
    this.naming=null;this.act({type:naming.type,id:naming.id,name:value});this.redraw();return;
   }
   if(action==='cancel-name'){this.naming=null;this.redraw();return;}
-  if(action==='export-component'){if(this.item())downloadDesign('deckcraft-component.json',this.item().design);return;}
   if(action==='export-workspace'){downloadDesign('deckcraft-workspace.json',this.store.getWorkspace().snapshot);return;}
   if(action==='creator'){this.creatorOpen=true;this.reviewed=null;this.draft=JSON.stringify(this.item()?.design||createComponent('deck',this.ui.deck),null,2);this.redraw();return;}
   if(action==='close-creator'){this.creatorOpen=false;this.root.querySelector('.creator-dialog').close();return;}
@@ -105,12 +129,7 @@ export class CanvasEditor {
   }
   const field=input.dataset.editorField;if(!field)return;
   if(field==='snap'){this.act({type:'snap',value:input.checked});return;}
-  const id=this.ui.selected;
-  if(['x','y','width','height'].includes(field))this.act({type:'item',id,patch:{[field]:Number(input.value)}});
-  else if(['waveform','cues','artwork'].includes(field))this.act({type:'parts',id,patch:{[field]:input.checked}});
-  else if(['name','deck'].includes(field))this.act({type:'design',id,patch:{[field]:input.value}});
-  else if(field==='theme')this.act({type:'theme',id,value:input.value});
-  else if(field==='theme-all'){if(input.value)this.act({type:'theme-all',value:input.value});}
+  if(field==='theme-all'){if(input.value)this.act({type:'theme-all',value:input.value});}
  }
  validate() {
   const dialog=this.root.querySelector('.creator-dialog');this.draft=dialog.querySelector('.design-json').value;
@@ -118,7 +137,7 @@ export class CanvasEditor {
   catch(error){this.reviewed=null;dialog.querySelector('.design-result').textContent=error.message;dialog.querySelector('.design-preview').replaceChildren();dialog.querySelector('[data-editor="apply-design"]').disabled=true;}
  }
  preview() {
-  const dialog=this.root.querySelector('.creator-dialog');dialog.querySelector('.design-preview').innerHTML=renderDesignPreview(this.reviewed,dialog.querySelector('.preview-state').value);
+  const dialog=this.root.querySelector('.creator-dialog');dialog.querySelector('.design-preview').innerHTML=renderDesignPreview(this.reviewed,dialog.querySelector('.preview-state').value);paintFixtureWaves(dialog.querySelector('.design-preview'));
   for(const control of dialog.querySelectorAll('.design-preview button,.design-preview input,.design-preview select'))control.disabled=true;
   dialog.querySelector('.design-result').textContent='Valid v2 '+(this.reviewed.format==='deckcraft.workspace'?'workspace. Applying replaces the current canvas only.':'component. Applying adds a new view.')+(this.upgraded?' This was a version 1 design: its old color options were replaced by the app theme.':'');
   dialog.querySelector('[data-editor="apply-design"]').disabled=false;
@@ -126,19 +145,42 @@ export class CanvasEditor {
  coordinate(value,max) {const unit=this.store.getWorkspace().snapshot.snap?20:1;return Math.max(0,Math.min(max,Math.round(value/unit)*unit));}
  pointerDown(event) {
   if(event.button!==0||!this.store.getWorkspace().active||!this.ui.editing)return;
-  const handle=event.target.closest('.widget-grip,.widget-resize');if(!handle)return;
-  event.preventDefault();const element=handle.closest('[data-item-id]'),item=this.item(element.dataset.itemId);if(!item)return;
-  this.ui.selected=item.id;this.drag={id:item.id,item:structuredClone(item),element,startX:event.clientX,startY:event.clientY,resize:handle.classList.contains('widget-resize'),pointer:event.pointerId};handle.setPointerCapture(event.pointerId);
+  this.suppressClick=false;
+  const widget=event.target.closest('.canvas-widget[data-item-id]');
+  if(!widget||!this.root.contains(widget)){if(event.target.matches('.canvas-stage'))this.select(null);return;}
+  const item=this.item(widget.dataset.itemId);if(!item)return;
+  this.select(item.id);
+  // Only the title bar and the eight edge/corner handles start a gesture; the component's own controls are untouched.
+  const handle=event.target.closest('.widget-handle,.widget-grip');if(!handle||!widget.contains(handle))return;
+  event.preventDefault();
+  const viewport=this.root.querySelector('.canvas-viewport');
+  this.drag={id:item.id,item:structuredClone(item),element:widget,startX:event.clientX,startY:event.clientY,scroll:{left:viewport?.scrollLeft||0,top:viewport?.scrollTop||0},handle:handle.dataset.handle||null,pointer:event.pointerId};
+  handle.setPointerCapture(event.pointerId);
  }
  pointerMove(event) {
   const d=this.drag;if(!d||d.pointer!==event.pointerId)return;
-  const dx=event.clientX-d.startX,dy=event.clientY-d.startY;
-  const [minW,minH]=minSize(d.item.design.kind);
-  d.patch=d.resize?{width:Math.max(minW,this.coordinate(d.item.width+dx,1600)),height:Math.max(minH,this.coordinate(d.item.height+dy,1600))}:{x:this.coordinate(d.item.x+dx,2400),y:this.coordinate(d.item.y+dy,4800)};
-  for(const [key,value] of Object.entries(d.patch))d.element.style[{x:'left',y:'top'}[key]||key]=value+'px';
+  const viewport=this.root.querySelector('.canvas-viewport');
+  // Total travel from the start (plus any canvas scroll since), never incremental, so there is no drift.
+  const dx=event.clientX-d.startX+(viewport?viewport.scrollLeft-d.scroll.left:0),dy=event.clientY-d.startY+(viewport?viewport.scrollTop-d.scroll.top:0);
+  d.patch=d.handle?resizeItem(d.item,d.handle,dx,dy,{snap:this.store.getWorkspace().snapshot.snap}):{x:this.coordinate(d.item.x+dx,ITEM_BOUNDS.x),y:this.coordinate(d.item.y+dy,ITEM_BOUNDS.y)};
+  const element=d.element.isConnected?d.element:(d.element=this.root.querySelector(`[data-item-id="${d.id}"]`));if(!element)return;
+  for(const [key,value] of Object.entries(d.patch))element.style[{x:'left',y:'top'}[key]||key]=value+'px';
+  element.dataset.dragging=d.handle?'resize':'move';
+  if(d.handle){
+   const [minW,minH]=minSize(d.item.design.kind),atW=d.patch.width===minW,atH=d.patch.height===minH;
+   element.dataset.readout=d.patch.width+' × '+d.patch.height+(atW&&atH?' · smallest size':atW?' · smallest width':atH?' · smallest height':'');
+  } else element.dataset.readout=d.patch.x+', '+d.patch.y;
  }
  pointerUp(event) {
-  const d=this.drag;if(!d||d.pointer!==event.pointerId)return;this.drag=null;this.suppressClick=true;
-  if(d.patch&&this.item(d.id))this.act({type:'item',id:d.id,patch:d.patch});else this.redraw();
+  const d=this.drag;if(!d||d.pointer!==event.pointerId)return;this.drag=null;
+  this.suppressClick=!d.handle;
+  if(d.patch&&this.commit(d.id,d.patch))return;
+  // Nothing changed (a click, or a clamped no-op): drop the transient preview without touching history.
+  const element=this.root.querySelector(`[data-item-id="${d.id}"]`);
+  if(element){delete element.dataset.dragging;delete element.dataset.readout;const live=this.item(d.id);if(live)Object.assign(element.style,{left:live.x+'px',top:live.y+'px',width:live.width+'px',height:live.height+'px'});}
+ }
+ /** Escape, pointercancel or a lost window abandon the gesture: the model and history were never touched. */
+ cancelDrag() {
+  if(!this.drag)return;this.drag=null;this.redraw();
  }
 }

@@ -12,7 +12,7 @@ The renderer is sandboxed and context-isolated, has no Node/process/Electron API
 
 The main process owns the native file chooser and allowlisted semantic IPC. Only its own intended main frame may call it. Renderer code cannot supply a filesystem path, shell command or arbitrary native command. Selected sources receive opaque IDs; source paths are kept in the private user-local library, not exposed through renderer metadata.
 
-The Rust child receives only necessary operational environment values. Source file type/identity is checked before decoding; nonblocking opens avoid FIFO substitution hangs. Input size/duration/channel/rate and command/frame limits are enforced. Stale generations and sequence numbers cannot overwrite current transport. Failure/disconnection is visible and never automatically replays music. Saved sessions restore paused.
+The Rust child receives only necessary operational environment values. Source file type/identity is checked before decoding; nonblocking opens avoid FIFO substitution hangs. Input size/duration/channel/rate and command/frame limits are enforced. Channel-strip commands (`gain`, `hi`, `mid`, `low`, `filter`) are exact `{type, deck, value}` shapes with a finite value in 0…100; the strip adds no file, path, network or arbitrary-code surface. Stale generations and sequence numbers cannot overwrite current transport. Failure/disconnection is visible and never automatically replays music. Saved sessions restore paused.
 
 The source registry is mode 0600, written atomically under mode-0700 application storage. Local renderer snapshots contain layout/session settings and opaque track IDs, not credentials. File basenames, cues and PCM-derived peaks can still be private music metadata: do not include your app-data directory in bug reports. Missing, changed and unsupported files are rejected; unrelated files are not deleted to recover state.
 
@@ -31,4 +31,4 @@ No sudo, OS package installation, service creation, OS-volume change, music dele
 
 The portable browser artifact remains UI-only, with network connections disabled. The native app uses local audio device access; OS-mounted network files still use the selected filesystem. Hardware latency/professional reliability and the target machine's portal/output behavior require separate live acceptance.
 
-Mixer IPC accepts only finite bounded gain/EQ positions, known band names and left/right/thru assignments. Meter telemetry is bounded and validated before reaching the renderer; disconnected and paused channels are silent. Mixer data exposes no file paths or executable bindings.
+Mixer routing is limited to semantic left/right/thru assignment. Native stereo peak telemetry is finite and bounded before entering the renderer. Paused/offline meters are silent; band kill adds no executable bindings or file paths.

@@ -14,17 +14,17 @@ A failed write does not throw away the current session. It leaves state in memor
 
 ## Shared components, independent compositions
 
-- `catalog.js`: five stable layout IDs and twelve synthetic demo tracks.
+- `catalog.js`: the single `console` layout ID (the five earlier IDs are accepted on restore), three themes and twelve synthetic demo tracks.
 - `components.js`: shared decks, cues, waveform fixtures, transport, mixer, collection and dialogs.
 - `views.js`: the five accepted compositions using those same components and state.
 - `main.js`: one store subscription and delegated real DOM event handlers. Layout/load changes mount a new composition; ordinary sliders/search/transport update the current view without replacing the active input element.
-- Per-layout grid/detail/cue-disclosure options are transient presentation state, separate from the musical session.
+- Per-deck pad-bank choice is transient presentation state, separate from the musical session.
 
 Two-deck compositions do not delete or pause C/D. Their preserved status strip exposes their state and quick access. The four-channel mixer remains reachable in every view. The portable application does not contain iframes, prototype HTML documents, model-specific engines or third-party runtime dependencies.
 
 ## Visual baseline
 
-`src/approved.css` is copied in full from the approved Round 03 visual system by `scripts/sync-approved-css.mjs`. A hash regression rejects accidental truncation. Historical design files remain unchanged. Application-specific selectors, the layout picker, preserved-deck strip and no-audio notices live in `src/app.css`.
+`src/approved.css` is the historical Round 03 stylesheet, copied by `scripts/sync-approved-css.mjs` and kept unchanged with a hash regression, but it is no longer part of the build. The console look lives in `src/app.css` (shell, lanes, deck panels, mixer, library), `src/native.css`, `src/canvas.css` and the three theme token sets in `src/themes.css`.
 
 ## Build and safety
 

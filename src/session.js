@@ -1,4 +1,5 @@
-import { DEFAULT_LAYOUT, DEFAULT_THEME, DECK_IDS, LAYOUTS, THEMES, TRACKS, trackById } from './catalog.js';
+import { DEFAULT_LAYOUT, DEFAULT_THEME, DECK_IDS, LAYOUTS, LEGACY_LAYOUTS, THEMES, TRACKS, trackById } from './catalog.js';
+import { MIXER_VALUE_FIELDS } from './mixer.js';
 
 const LIMITS = {pitch:[-8,8],gain:[0,100],hi:[0,100],mid:[0,100],low:[0,100],filter:[0,100],level:[0,100]};
 const FLAGS = ['playing','sync','headphone','loopEnabled'];
@@ -36,16 +37,17 @@ export function reduceSession(state,action) {
         const position=clamp(native.position,0,trackById(old.trackId).duration);
         if(position!==old.position||native.playing!==old.playing)next={...old,position,playing:native.playing};
       }
-      // Mixer settings follow native receipts, except while a (re)connecting engine still holds its defaults.
-      if(action.mixer!==false&&snap.ready&&native) {
-        if(finite(native.level)&&native.level>=0&&native.level<=100&&native.level!==next.level)next={...next,level:native.level};
-        for(const field of ['gain',...EQ_BANDS])if(finite(native[field])&&native[field]>=0&&native[field]<=100&&native[field]!==next[field])next={...next,[field]:native[field]};
+      // Native receipts own every channel-strip value once the saved ones have been restored to the
+      // engine (`mixer:false` marks the restore window, where the engine still reports its defaults).
+      if(snap.ready&&native&&action.mixer!==false)for(const field of MIXER_VALUE_FIELDS)
+        if(finite(native[field])&&native[field]>=0&&native[field]<=100&&native[field]!==next[field])next={...next,[field]:native[field]};
+      if(snap.ready&&native&&action.mixer!==false) {
         if(ASSIGNMENTS.includes(native.assign)&&native.assign!==next.assign)next={...next,assign:native.assign};
-        if(EQ_BANDS.some(band=>next[band]>0&&next.eqRestore?.[band]!=null))next={...next,eqRestore:Object.fromEntries(EQ_BANDS.map(band=>[band,next[band]>0?null:next.eqRestore[band]]))};
+        if(EQ_BANDS.some(b=>next[b]>0&&next.eqRestore?.[b]!=null))next={...next,eqRestore:Object.fromEntries(EQ_BANDS.map(b=>[b,next[b]>0?null:next.eqRestore[b]]))};
       }
       if(next!==old){decks[id]=next;changed=true;}
     }
-    const mixer=action.mixer!==false&&snap.ready&&finite(snap.crossfader)&&snap.crossfader>=0&&snap.crossfader<=100&&snap.crossfader!==state.mixer.crossfader?{...state.mixer,crossfader:snap.crossfader}:state.mixer;
+    const mixer=snap.ready&&action.mixer!==false&&finite(snap.crossfader)&&snap.crossfader>=0&&snap.crossfader<=100&&snap.crossfader!==state.mixer.crossfader?{...state.mixer,crossfader:snap.crossfader}:state.mixer;
     return changed||mixer!==state.mixer?{...state,decks,mixer}:state;
   }
   if (action.type === 'layout') return validLayout(action.value) && action.value !== state.layout ? {...state,layout:action.value} : state;
@@ -97,7 +99,6 @@ export function reduceSession(state,action) {
     else if(field==='position'&&finite(value)) next={...current,position:clamp(value,0,trackById(current.trackId).duration)};
     else if(own(LIMITS,field)&&finite(value)) {
       next={...current,[field]:clamp(value,...LIMITS[field])};
-      // Moving a band knob away from zero by hand forgets any remembered kill position.
       if(EQ_BANDS.includes(field)&&next[field]>0&&current.eqRestore?.[field]!=null) next.eqRestore={...current.eqRestore,[field]:null};
     }
     else if(field==='loopLength'&&LOOP_LENGTHS.includes(value)) next={...current,loopLength:value};
@@ -116,7 +117,7 @@ export function restoreSession(text) {
   if(!object(saved)||saved.version!==1) return {state:initial,recovered:true};
   let recovered=false;
   const state={...initial};
-  if(validLayout(saved.layout)) state.layout=saved.layout; else recovered=true;
+  if(validLayout(saved.layout)) state.layout=saved.layout; else if(!LEGACY_LAYOUTS.includes(saved.layout)) recovered=true;
   if(validTheme(saved.theme)) state.theme=saved.theme;
   if(['perform','prepare'].includes(saved.mode)) state.mode=saved.mode;
   if(['ab','cd'].includes(saved.pair)) state.pair=saved.pair;
@@ -128,9 +129,8 @@ export function restoreSession(text) {
     if(finite(raw.position)) deck.position=clamp(raw.position,0,track.duration);else recovered=true;
     for(const field of ['sync','headphone','loopEnabled']) if(typeof raw[field]==='boolean') deck[field]=raw[field];
     for(const [field,[min,max]] of Object.entries(LIMITS)) if(finite(raw[field])) deck[field]=clamp(raw[field],min,max);
-    // Older saved sessions have no assignments or kill memory: they take the defaults without being "recovered".
-    if(own(raw,'assign')) {if(ASSIGNMENTS.includes(raw.assign)) deck.assign=raw.assign; else recovered=true;}
-    if(object(raw.eqRestore)) deck.eqRestore=Object.fromEntries(EQ_BANDS.map(band=>[band,deck[band]===0?remembered(raw.eqRestore[band]):null]));
+    if(own(raw,'assign')) {if(ASSIGNMENTS.includes(raw.assign))deck.assign=raw.assign;else recovered=true;}
+    if(object(raw.eqRestore))deck.eqRestore=Object.fromEntries(EQ_BANDS.map(b=>[b,deck[b]===0?remembered(raw.eqRestore[b]):null]));
     if(LOOP_LENGTHS.includes(raw.loopLength)) deck.loopLength=raw.loopLength;
     if(Array.isArray(raw.cues)&&raw.cues.length===4) deck.cues=raw.cues.map((value,i)=>finite(value)?clamp(value,0,track.duration):deck.cues[i]);
     deck.playing=false; state.decks[id]=deck;
