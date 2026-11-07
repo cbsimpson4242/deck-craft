@@ -22,7 +22,10 @@ function validateIPC(request) {
     seek: ["type", "deck", "position"],
     level: ["type", "deck", "value"],
     gain: ["type", "deck", "value"],
-    eq: ["type", "deck", "band", "value"],
+    hi: ["type", "deck", "value"],
+    mid: ["type", "deck", "value"],
+    low: ["type", "deck", "value"],
+    filter: ["type", "deck", "value"],
     assign: ["type", "deck", "side"],
     crossfader: ["type", "value"],
     reconnect: ["type"],
@@ -34,8 +37,7 @@ function validateIPC(request) {
   if (fields.includes("name") && (typeof request.name !== "string" || !request.name.trim() || request.name.length > 80 || /[\x00-\x1f]/.test(request.name))) throw Error("invalid_collection_name");
   if (fields.includes("kind") && !(request.type === "import" ? ["files", "folder"] : ["crate", "playlist"]).includes(request.kind)) throw Error("invalid_kind");
   if (fields.includes("trackIds") && (!Array.isArray(request.trackIds) || !request.trackIds.length || request.trackIds.length > 1000 || request.trackIds.some(id => typeof id !== "string" || !ID.test(id)))) throw Error("invalid_track");
-  if (fields.includes("band") && !["hi", "mid", "low"].includes(request.band)) throw Error("invalid_band");
-  if (fields.includes("side") && !["left", "thru", "right"].includes(request.side)) throw Error("invalid_assignment");
+  if (fields.includes("side") && !["left","right","thru"].includes(request.side)) throw Error("invalid_assignment");
   if (fields.includes("direction") && ![-1, 1].includes(request.direction)) throw Error("invalid_direction");
   if (fields.includes("trackId") && (typeof request.trackId !== "string" || !ID.test(request.trackId))) throw Error("invalid_track");
   if (fields.includes("value") && (!Number.isFinite(request.value) || request.value < 0 || request.value > 100))

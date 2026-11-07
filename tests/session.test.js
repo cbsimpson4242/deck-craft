@@ -1,16 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LAYOUTS } from '../src/catalog.js';
+import { LAYOUTS, LEGACY_LAYOUTS } from '../src/catalog.js';
 import { createSession, reduceSession, serializeSession, restoreSession } from '../src/session.js';
 
 test('saved preference and musical data restore, but transport never auto-starts', () => {
   let state=createSession();
-  state=reduceSession(state,{type:'layout',value:'studio-linear'});
+  state=reduceSession(state,{type:'theme',value:'daylight'});
   state=reduceSession(state,{type:'deck',deck:'D',field:'position',value:123.5});
   state=reduceSession(state,{type:'deck',deck:'D',field:'playing',value:true});
   state=reduceSession(state,{type:'setCue',deck:'D',index:2});
   const restored=restoreSession(serializeSession(state));
-  assert.equal(restored.state.layout,'studio-linear');
+  assert.equal(restored.state.theme,'daylight');
   assert.equal(restored.state.decks.D.position,123.5);
   assert.equal(restored.state.decks.D.cues[2],123.5);
   assert.equal(restored.state.decks.D.playing,false);
@@ -46,13 +46,13 @@ test('bounds, cue editing and track loading affect only the intended deck', () =
 
 test('malformed, unknown-version and hostile saved state recover safely', () => {
   for(const text of ['not json','null','[]','{"version":999}', '{"version":1,"layout":"unknown","decks":{"A":{"trackId":"unknown","position":"x"}}}']){
-    const result=restoreSession(text);assert.equal(result.state.layout,'studio-sync');assert.equal(Object.keys(result.state.decks).length,4);assert.equal(result.recovered,true);
+    const result=restoreSession(text);assert.equal(result.state.layout,'console');assert.equal(Object.keys(result.state.decks).length,4);assert.equal(result.recovered,true);
   }
   const malicious=JSON.stringify({...createSession(),layout:'studio-grid',decks:{A:{trackId:'afterlight',position:Infinity,cues:['x',-4,100000,44],playing:true}},__proto__:{polluted:true}});
   const result=restoreSession(malicious);assert.equal(result.state.decks.A.playing,false);assert.equal(result.state.decks.A.position,92.4);assert.equal({}.polluted,undefined);
 });
 
-test('all layout transitions preserve the same four decks, mixer and collection state', () => {
+test('presentation changes preserve the same four decks, mixer and collection state', () => {
   let state=createSession();
   state.decks.C={...state.decks.C,playing:true,position:177.3,loopEnabled:true,pitch:2.5};
   state.decks.A.cues=[0,33.5,101,230];
@@ -60,15 +60,22 @@ test('all layout transitions preserve the same four decks, mixer and collection 
   state.mixer.effects.echo={enabled:true,wet:63};
   state.library.query='Orbit';
   const musicalState=structuredClone({decks:state.decks,mixer:state.mixer,library:state.library});
-  for (const from of LAYOUTS) {
-    state=reduceSession(state,{type:'layout',value:from.id});
-    assert.equal(state.layout,from.id,'requested layout must become active');
-    for (const to of LAYOUTS) {
-      const before=state;
-      state=reduceSession(state,{type:'layout',value:to.id});
-      assert.equal(state.layout,to.id);
-      assert.deepEqual({decks:state.decks,mixer:state.mixer,library:state.library},musicalState);
-      assert.deepEqual({decks:before.decks,mixer:before.mixer,library:before.library},musicalState,'no mutation of previous snapshot');
-    }
+  const changes=[{type:'theme',value:'ember'},{type:'mode',value:'prepare'},{type:'pair',value:'cd'},{type:'layout',value:'console'},{type:'theme',value:'daylight'},{type:'mode',value:'perform'},{type:'pair',value:'ab'}];
+  for (const change of changes) {
+    const before=state;
+    state=reduceSession(state,change);
+    assert.deepEqual({decks:state.decks,mixer:state.mixer,library:state.library},musicalState,JSON.stringify(change));
+    assert.deepEqual({decks:before.decks,mixer:before.mixer,library:before.library},musicalState,'no mutation of previous snapshot');
   }
+});
+
+test('sessions saved under a retired layout restore silently into the console', () => {
+  for (const layout of LEGACY_LAYOUTS) {
+    const saved=JSON.stringify({...createSession(),layout});
+    const result=restoreSession(saved);
+    assert.equal(result.state.layout,'console',layout);
+    assert.equal(result.recovered,false,layout+' is a migration, not a recovery');
+  }
+  assert.equal(restoreSession(JSON.stringify({...createSession(),layout:'unknown'})).recovered,true);
+  assert.deepEqual(LAYOUTS.map(l=>l.id),['console']);
 });

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createStore, STORAGE_KEY, WORKSPACE_KEY } from '../src/store.js';
+import { workspaceStarter } from '../src/workspace.js';
 
 const memory=()=>{const data=new Map();return {data,getItem:key=>data.get(key)??null,setItem:(key,value)=>data.set(key,value)};};
 
@@ -30,8 +31,8 @@ test('templates and saved presets are reusable independent designs; undo/redo is
  const id=store.getWorkspace().snapshot.items[0].id;
  store.dispatchWorkspace({type:'save-template',id,name:'Copper deck'});
  store.dispatchWorkspace({type:'add-template',index:0,deck:'B'});
- store.dispatchWorkspace({type:'theme',id,value:'orchid'});
- assert.notEqual(store.getWorkspace().snapshot.items[1].design.theme,'orchid');
+ store.dispatchWorkspace({type:'theme',id,value:'daylight'});
+ assert.notEqual(store.getWorkspace().snapshot.items[1].design.theme,'daylight');
  store.dispatchWorkspace({type:'save-preset',name:'My setup'});
  store.dispatchWorkspace({type:'clear'});
  assert.equal(store.getWorkspace().snapshot.items.length,0);
@@ -55,7 +56,7 @@ test('invalid designs are rejected atomically and failures remain visible across
  store.dispatchWorkspace({type:'clear'});
  assert.match(store.getWarning(),/workspace.*not saved/i);
  storage.setItem=(key,value)=>storage.data.set(key,value);
- store.dispatch({type:'layout',value:'signal-one'});
+ store.dispatch({type:'theme',value:'ember'});
  assert.match(store.getWarning(),/workspace.*not saved/i,'session writes cannot clear canvas save failures');
  store.dispatchWorkspace({type:'undo'});
  assert.equal(store.getWarning(),'');
@@ -68,7 +69,7 @@ test('one positioned palette drop is one save and one undo; history and capaciti
  store.dispatchWorkspace({type:'undo'});assert.equal(store.getWorkspace().snapshot.items.length,0);
  store.dispatchWorkspace({type:'redo'});
  const id=store.getWorkspace().snapshot.items[0].id;
- for(let i=0;i<60;i++)store.dispatchWorkspace({type:'theme',id,value:['ember','orchid','app','midnight'][i%4]});
+ for(let i=0;i<60;i++)store.dispatchWorkspace({type:'theme',id,value:['ember','daylight','app','graphite'][i%4]});
  assert.equal(store.getWorkspaceHistory().undo,40);
  for(let i=1;i<24;i++)store.dispatchWorkspace({type:'add',kind:'crossfader'});
  const before=JSON.stringify(store.getWorkspace());
@@ -83,6 +84,18 @@ test('unknown saved workspace preserves legacy session, original saved bytes and
  storage.setItem(WORKSPACE_KEY,text);storage.setItem('unrelated','keep');
  const restored=createStore(storage);assert.equal(restored.get().decks.D.position,123);
  assert.equal(restored.getWorkspace().snapshot.items.length,0);assert.match(restored.getWarning(),/could not be restored/);
- restored.dispatch({type:'layout',value:'signal-wide'});
+ restored.dispatch({type:'theme',value:'ember'});
  assert.equal(storage.getItem(WORKSPACE_KEY),text);assert.equal(storage.getItem('unrelated'),'keep');
+});
+
+
+test('mixer starter and palette rows preserve space for the whole channel strip',()=>{
+ const items=workspaceStarter('console').items;
+ const mixer=items.find(item=>item.design.kind==='mixer');
+ const crossfader=items.find(item=>item.design.kind==='crossfader');
+ assert.ok(crossfader.y>=mixer.y+mixer.height,'starter crossfader clears the complete mixer');
+ const store=createStore(memory());store.dispatchWorkspace({type:'add',kind:'mixer'});
+ for(let i=0;i<3;i++)store.dispatchWorkspace({type:'add',kind:'deck'});
+ const added=store.getWorkspace().snapshot.items;
+ assert.ok(added[3].y>=added[0].y+added[0].height,'next palette row clears the mixer');
 });

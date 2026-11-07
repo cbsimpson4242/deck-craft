@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { registerLocalTrack } from "../src/catalog.js";
+import { registerLocalTrack, waveDetailById, replaceLocalLibrary } from "../src/catalog.js";
 import { createStore } from "../src/store.js";
 import { NativeSession } from "../src/native.js";
 const token = "local-12345678-1234-1234-1234-123456789abc";
@@ -122,4 +122,36 @@ test("wrong-source or disconnected receipts never claim the old deck is playing"
   assert.equal(s.get().decks.A.playing, false);
   n.accept({ ...snapshot(3, { playing: true }), ready: false });
   assert.equal(s.get().decks.A.playing, false);
+});
+
+test("detail receipts follow engine/source/load ownership, including the same track on two decks", () => {
+  replaceLocalLibrary([]); const s=store(); let listener;
+  const n=new NativeSession({onEvent(fn){listener=fn;}},s,{redraw(){},say(){}});
+  let paints=0;n.paintClock=()=>{paints++;};
+  const snap={...snapshot(10),sourceId:"source-one"};snap.decks[0].loadGeneration=8;snap.decks[0].waveGeneration=7;
+  n.accept(snap,true);paints=0;
+  const detail={bins:512,peak:Buffer.alloc(512,80).toString("base64"),rms:Buffer.alloc(512,50).toString("base64")};
+  const event={type:"waveform-detail",deck:"A",trackId:token,sourceId:"source-one",engineId:snap.engineId,loadGeneration:7,detail};
+  for(const bad of [{...event,sourceId:"retired"},{...event,engineId:"engine-old-123"},{...event,loadGeneration:6},{...event,deck:"B"}])listener(bad);
+  assert.equal(waveDetailById(token),undefined);assert.equal(paints,0);
+  listener(event);assert.equal(waveDetailById(token).peak[0],80);assert.equal(paints,1);
+  s.dispatch({type:"load",deck:"B",trackId:token});const second=structuredClone(snap);second.seq=11;second.decks[1]={...second.decks[0],id:"B",loadGeneration:4,waveGeneration:3};n.accept(second,true);
+  const alternate={...detail,peak:Buffer.alloc(512,90).toString("base64")};
+  listener({...event,deck:"B",loadGeneration:3,detail:alternate});assert.equal(waveDetailById(token).peak[0],90);
+  n.accept({...second,terminal:true,ready:false},true);listener({...event,detail});assert.equal(waveDetailById(token).peak[0],90);
+  const fresh={...second,sourceId:"source-two",engineId:"engine-new-456",seq:1};n.accept(fresh,true);
+  listener(event);assert.equal(waveDetailById(token).peak[0],90);
+  listener({...event,sourceId:fresh.sourceId,engineId:fresh.engineId});assert.equal(waveDetailById(token).peak[0],80);
+});
+
+test("a valid native detail arriving before its load reply is cached without selecting or playing the track", () => {
+  replaceLocalLibrary([]);registerLocalTrack(track);
+  const s=createStore({getItem:()=>null,setItem:()=>{}});let listener;
+  const n=new NativeSession({onEvent(fn){listener=fn;}},s,{redraw(){},say(){}});n.paintClock=()=>{};
+  const snap={...snapshot(1),sourceId:"pending-source"};snap.decks[0].waveGeneration=1;n.accept(snap,true);
+  const before=JSON.stringify(s.get());
+  listener({type:"waveform-detail",deck:"A",trackId:token,sourceId:snap.sourceId,engineId:snap.engineId,loadGeneration:1,
+    detail:{bins:512,peak:Buffer.alloc(512,80).toString("base64"),rms:Buffer.alloc(512,50).toString("base64")}});
+  assert.equal(waveDetailById(token)?.peak[0],80);
+  assert.equal(JSON.stringify(s.get()),before,"presentation delivery cannot select a pending track or autoplay");
 });

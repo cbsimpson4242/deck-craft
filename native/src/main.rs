@@ -1,10 +1,7 @@
+use deck_craft_audio::snapshot_interval;
 use deck_craft_audio::{
-    Command, Identity, Request, band_index, checked_file, deck_index, decode,
-    dsp::{
-        ChannelStrip, HIGH_CROSSOVER_HZ, LOW_CROSSOVER_HZ, Side, StripShared, knob_to_gain,
-        side_gain,
-    },
-    read_frame,
+    Command, Identity, Request, Waveform, analyze_waveform, base64, checked_file, deck_index, decode, detail_bin_count, read_frame,
+    dsp::{DeckControls, Knob, Strip},
     stream::{Prepared, StreamState, prepare},
     validate,
 };
@@ -40,7 +37,7 @@ enum Message {
         deck: usize,
         generation: u64,
         track_id: String,
-        peaks: Vec<f32>,
+        waveform: Waveform,
     },
 }
 struct AudioDeck {
@@ -50,22 +47,20 @@ struct AudioDeck {
     channels: u16,
     sample_rate: u32,
     level: f64,
-    // Channel strip settings (knob positions 0..=100) and the audio-thread handle they feed.
-    gain: f64,
-    low: f64,
-    mid: f64,
-    hi: f64,
-    side: Side,
-    shared: Arc<StripShared>,
+    /// Gain/EQ/filter knobs and the fader gain. Owned by the deck, not by a loaded source, so
+    /// settings survive load, seek and natural-end restart.
+    controls: Arc<DeckControls>,
+    side: deck_craft_audio::fullkill::Side,
     path: String,
     identity: Option<Identity>,
     generation: u64,
     ended: bool,
     stream: Option<Arc<StreamState>>,
 }
-fn round4(value: f32) -> f64 {
-    (value as f64 * 1.0e4).round() / 1.0e4
-}
+/// Channel fader gain: 0.25 headroom times the 0..=100 level. The previous implementation
+/// applied this as the Rodio player volume; it now lives in the strip so it is smoothed with
+/// the other channel controls.
+const MASTER_HEADROOM: f64 = 0.25;
 struct Engine {
     output: Option<MixerDeviceSink>,
     failed: Arc<AtomicBool>,
@@ -78,6 +73,15 @@ struct Engine {
     engine_id: String,
     sequence: u64,
 }
+impl AudioDeck {
+    /// A paused or ended source is not polled by the device, so its smoothing cannot advance;
+    /// ask it to adopt the new targets at once so resuming has no audible glide.
+    fn sync_paused_controls(&self) {
+        if self.track_id.is_none() || self.ended || self.player.is_paused() {
+            self.controls.request_snap();
+        }
+    }
+}
 impl Engine {
     fn ready(&self) -> bool {
         self.output.is_some() && !self.failed.load(Ordering::Relaxed)
@@ -85,19 +89,27 @@ impl Engine {
     fn snapshot(&mut self) -> Value {
         let ready = self.ready();
         let loading = self.loading;
+        let wave_tokens = &self.wave_tokens;
         let decks:Vec<Value>=self.decks.iter_mut().enumerate().map(|(i,d)|{
    let failed=d.stream.as_ref().is_some_and(|s|s.failed.load(Ordering::Acquire));if !ready||failed{d.player.pause();}
    if d.track_id.is_some()&&d.player.empty(){d.ended=true;}
    let position=d.stream.as_ref().map(|s|s.position_frames.load(Ordering::Relaxed)as f64/d.sample_rate as f64).unwrap_or(0.0).clamp(0.0,d.duration);
    let underruns=d.stream.as_ref().map(|s|s.underrun_samples.load(Ordering::Relaxed)).unwrap_or(0);
    let playing=ready&&!failed&&d.track_id.is_some()&&!d.player.is_paused()&&!d.ended;
-   // Meters are only ever live while this channel is actually playing; a paused, ended, failed
-   // or offline channel reports silence rather than a held reading.
-   let (meter_left,meter_right)=if playing{d.shared.meter()}else{(0.0,0.0)};
-   json!({"id":(["A","B","C","D"][i]),"trackId":d.track_id,"duration":d.duration,"channels":d.channels,"sampleRate":d.sample_rate,"position":position,"playing":playing,"level":d.level,"gain":d.gain,"hi":d.hi,"mid":d.mid,"low":d.low,"assign":d.side.as_str(),"meter":{"l":round4(meter_left),"r":round4(meter_right)},"loadGeneration":d.generation,"loading":loading[i],"underrunSamples":underruns,"error":if failed{Some("decoder_failed")}else{None}})
+   let meter=if playing {d.controls.meter()} else {(0.0,0.0)};
+   json!({"id":(["A","B","C","D"][i]),"trackId":d.track_id,"duration":d.duration,"channels":d.channels,"sampleRate":d.sample_rate,"position":position,"playing":ready&&!failed&&d.track_id.is_some()&&!d.player.is_paused()&&!d.ended,"level":d.level,"assign":d.side.as_str(),"meter":{"l":meter.0,"r":meter.1},"gain":d.controls.get(Knob::Gain),"hi":d.controls.get(Knob::Hi),"mid":d.controls.get(Knob::Mid),"low":d.controls.get(Knob::Low),"filter":d.controls.get(Knob::Filter),"loadGeneration":d.generation,"waveGeneration":wave_tokens[i].load(Ordering::SeqCst),"loading":loading[i],"underrunSamples":underruns,"error":if failed{Some("decoder_failed")}else{None}})
   }).collect();
         let output=self.output.as_ref().map(|o|json!({"sampleRate":o.config().sample_rate().get(),"channels":o.config().channel_count().get(),"backend":"ALSA default device"}));
-        json!({"ready":ready,"output":output,"error":if ready{Value::Null}else{json!("audio_output_unavailable")},"decks":decks,"crossfader":self.crossfader,"capabilities":{"channelEq":true,"channelMeters":true,"crossfaderAssign":true},"crossoverHz":[LOW_CROSSOVER_HZ,HIGH_CROSSOVER_HZ]})
+        json!({"ready":ready,"output":output,"error":if ready{Value::Null}else{json!("audio_output_unavailable")},"decks":decks,"crossfader":self.crossfader,"capabilities":{"channelEq":true,"channelMeters":true,"crossfaderAssign":true}})
+    }
+    /// Cadence for the next unsolicited snapshot, from the decks' current state.
+    fn cadence(&self) -> Duration {
+        let ready = self.ready();
+        let playing = ready
+            && self.decks.iter().any(|d| {
+                d.track_id.is_some() && !d.ended && !d.player.is_paused() && !d.player.empty()
+            });
+        snapshot_interval(playing, self.loading.iter().any(|loading| *loading))
     }
     fn send(&mut self, kind: &str, mut payload: Value) {
         self.sequence += 1;
@@ -116,18 +128,18 @@ impl Engine {
             json!({"id":id,"ok":error.is_none(),"error":error,"snapshot":snapshot}),
         );
     }
-    /// Publish every channel's settings to its audio-thread strip (relaxed atomics only).
-    fn apply_mix(&self) {
+    fn levels(&self) {
         for d in &self.decks {
-            d.shared.set_targets(
-                knob_to_gain(d.gain),
-                knob_to_gain(d.low),
-                knob_to_gain(d.mid),
-                knob_to_gain(d.hi),
-                (d.level / 100.0) as f32,
-                side_gain(d.side, self.crossfader),
-            );
+            d.controls.set_fader(d.level / 100.0);
+            d.controls.set_output(deck_craft_audio::fullkill::side_gain(d.side,self.crossfader) as f64);
+            d.sync_paused_controls();
         }
+    }
+    fn knob(&mut self, id: &str, deck: &str, knob: Knob, value: f64) {
+        let i = deck_index(deck).unwrap();
+        self.decks[i].controls.set(knob, value);
+        self.decks[i].sync_paused_controls();
+        self.reply(id, None);
     }
     fn cancel(&mut self, i: usize) {
         self.tokens[i].fetch_add(1, Ordering::SeqCst);
@@ -208,7 +220,7 @@ impl Engine {
                 let i = deck_index(&deck).unwrap();
                 self.cancel(i);
                 self.decks[i].player.pause();
-                self.decks[i].shared.reset_meter();
+                self.decks[i].controls.reset_meter();
                 self.reply(&id, None);
             }
             Command::Play { deck } => {
@@ -228,7 +240,6 @@ impl Engine {
                     );
                     self.stage(id, i, args.0, args.1, args.2, 0.0, true, false, tx);
                 } else {
-                    self.decks[i].shared.reset_meter();
                     self.decks[i].player.play();
                     self.reply(&id, None);
                 }
@@ -250,42 +261,31 @@ impl Engine {
                         d.identity.clone().unwrap(),
                     );
                     self.decks[i].player.pause();
+                self.decks[i].controls.reset_meter();
                     self.stage(id, i, args.0, args.1, args.2, position, resume, false, tx);
                 }
             }
             Command::Level { deck, value } => {
                 let i = deck_index(&deck).unwrap();
                 self.decks[i].level = value;
-                self.apply_mix();
+                self.levels();
                 self.reply(&id, None);
             }
-            Command::Gain { deck, value } => {
-                let i = deck_index(&deck).unwrap();
-                self.decks[i].gain = value;
-                self.apply_mix();
-                self.reply(&id, None);
-            }
-            Command::Eq { deck, band, value } => {
-                let i = deck_index(&deck).unwrap();
-                match band_index(&band).unwrap() {
-                    0 => self.decks[i].low = value,
-                    1 => self.decks[i].mid = value,
-                    _ => self.decks[i].hi = value,
-                }
-                self.apply_mix();
-                self.reply(&id, None);
-            }
-            Command::Assign { deck, side } => {
-                let i = deck_index(&deck).unwrap();
-                self.decks[i].side = Side::parse(&side).unwrap();
-                self.apply_mix();
-                self.reply(&id, None);
+            Command::Assign {deck,side} => {
+                let i=deck_index(&deck).unwrap();
+                self.decks[i].side=deck_craft_audio::fullkill::Side::parse(&side).unwrap();
+                self.levels(); self.reply(&id,None);
             }
             Command::Crossfader { value } => {
                 self.crossfader = value;
-                self.apply_mix();
+                self.levels();
                 self.reply(&id, None);
             }
+            Command::Gain { deck, value } => self.knob(&id, &deck, Knob::Gain, value),
+            Command::Hi { deck, value } => self.knob(&id, &deck, Knob::Hi, value),
+            Command::Mid { deck, value } => self.knob(&id, &deck, Knob::Mid, value),
+            Command::Low { deck, value } => self.knob(&id, &deck, Knob::Low, value),
+            Command::Filter { deck, value } => self.knob(&id, &deck, Knob::Filter, value),
         }
         true
     }
@@ -319,13 +319,12 @@ impl Engine {
             channels,
             sample_rate,
         } = c.prepared;
+        let i = c.deck;
+        let controls = self.decks[i].controls.clone();
         let replacement = Player::connect_new(self.output.as_ref().unwrap().mixer());
         replacement.pause();
-        let i = c.deck;
-        // The strip (all its filter memory) is built here, on the control thread.
-        replacement.append(ChannelStrip::new(source, self.decks[i].shared.clone()));
-        let AudioDeck { level, gain, low, mid, hi, side, ref shared, .. } = self.decks[i];
-        let shared = shared.clone();
+        replacement.append(Strip::new(source, controls.clone()));
+        let level = self.decks[i].level;
         self.decks[i] = AudioDeck {
             player: replacement,
             track_id: Some(c.track_id.clone()),
@@ -333,27 +332,27 @@ impl Engine {
             channels,
             sample_rate,
             level,
-            gain,
-            low,
-            mid,
-            hi,
-            side,
-            shared,
+            side:self.decks[i].side,
+            controls,
             path: c.path.clone(),
             identity: Some(c.identity.clone()),
             generation: c.generation,
             ended: false,
             stream: Some(state),
         };
-        self.apply_mix();
+        self.levels();
         if c.resume {
             self.decks[i].player.play();
+        }
+        // Waveform ownership follows source loads, not the stream preparations used by seek/replay.
+        // Publish that identity in the load reply before the asynchronous analysis can finish.
+        if c.analyze {
+            self.wave_tokens[i].store(c.generation, Ordering::SeqCst);
         }
         self.reply(&c.request_id, None);
         if !c.analyze {
             return;
         }
-        self.wave_tokens[i].store(c.generation, Ordering::SeqCst);
         let token = self.wave_tokens[i].clone();
         let tx = tx.clone();
         thread::spawn(move || {
@@ -361,21 +360,15 @@ impl Engine {
                 return;
             };
             let count = (duration * sample_rate as f64 * channels as f64).max(1.0);
-            let mut peaks = vec![0.0f32; 512];
-            for (n, sample) in decoder.enumerate() {
-                if n % 8192 == 0 && token.load(Ordering::SeqCst) != c.generation {
-                    return;
-                }
-                let bin = (((n as f64 / count) * 512.0).floor() as usize).min(511);
-                if sample.is_finite() {
-                    peaks[bin] = peaks[bin].max(sample.abs().min(1.0));
-                }
-            }
+            let cancelled = || token.load(Ordering::SeqCst) != c.generation;
+            let Some(waveform) = analyze_waveform(decoder, count, detail_bin_count(duration), cancelled) else {
+                return;
+            };
             let _ = tx.send(Message::Wave {
                 deck: i,
                 generation: c.generation,
                 track_id: c.track_id,
-                peaks,
+                waveform,
             });
         });
     }
@@ -454,13 +447,8 @@ fn main() {
                 channels: 0,
                 sample_rate: 0,
                 level: 78.0,
-                gain: 50.0,
-                low: 50.0,
-                mid: 50.0,
-                hi: 50.0,
-                // A and B keep their crossfader sides; C and D stay direct, as before assignments.
-                side: [Side::Left, Side::Right, Side::Thru, Side::Thru][index],
-                shared: Arc::new(StripShared::default()),
+                side:[deck_craft_audio::fullkill::Side::Left,deck_craft_audio::fullkill::Side::Right,deck_craft_audio::fullkill::Side::Thru,deck_craft_audio::fullkill::Side::Thru][index],
+                controls: DeckControls::new(MASTER_HEADROOM * 78.0 / 100.0),
                 path: String::new(),
                 identity: None,
                 generation: 0,
@@ -489,7 +477,7 @@ fn main() {
         engine_id,
         sequence: 0,
     };
-    engine.apply_mix();
+    engine.levels();
     let (tx, rx) = mpsc::channel();
     let input_tx = tx.clone();
     thread::spawn(move || {
@@ -526,7 +514,8 @@ fn main() {
     engine.send("state", json!({"snapshot":snapshot}));
     let mut last = Instant::now();
     loop {
-        match rx.recv_timeout(Duration::from_millis(50)) {
+        let wait = engine.cadence().saturating_sub(last.elapsed()).max(Duration::from_millis(1));
+        match rx.recv_timeout(wait) {
             Ok(Message::Request(r)) => {
                 if !engine.apply(r, &tx) {
                     break;
@@ -537,12 +526,15 @@ fn main() {
                 deck,
                 generation,
                 track_id,
-                peaks,
+                waveform,
             }) => {
                 if engine.decks[deck].track_id.as_ref() == Some(&track_id)
                     && engine.wave_tokens[deck].load(Ordering::SeqCst) == generation
                 {
-                    engine.send("waveform",json!({"deck":(["A","B","C","D"][deck]),"trackId":track_id,"loadGeneration":generation,"peaks":peaks}));
+                    // `peaks` is the persisted 512-value summary; `detail` is a session-only finer
+                    // peak/RMS envelope (8-bit, base64) measured from the same decoded PCM.
+                    let detail=json!({"bins":waveform.detail_peak.len(),"peak":base64(&waveform.detail_peak),"rms":base64(&waveform.detail_rms)});
+                    engine.send("waveform",json!({"deck":(["A","B","C","D"][deck]),"trackId":track_id,"loadGeneration":generation,"peaks":waveform.peaks,"detail":detail}));
                 }
             }
             Ok(Message::Invalid(id)) => engine.reply(&id, Some("invalid_request")),
@@ -550,7 +542,7 @@ fn main() {
             Err(mpsc::RecvTimeoutError::Timeout) => {}
         }
         engine.retire();
-        if last.elapsed() >= Duration::from_millis(100) {
+        if last.elapsed() >= engine.cadence() {
             let snapshot = engine.snapshot();
             engine.send("state", json!({"snapshot":snapshot}));
             last = Instant::now();

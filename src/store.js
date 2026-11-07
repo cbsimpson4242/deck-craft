@@ -1,9 +1,8 @@
 import { createSession, reduceSession, restoreSession, serializeSession } from './session.js';
+import { MIXER_VALUE_FIELDS } from './mixer.js';
 import { createWorkspace, restoreWorkspaceWithNotice, reduceWorkspace } from './workspace.js';
 export const STORAGE_KEY='deck-craft.ui.v1';
 export const WORKSPACE_KEY='deck-craft.workspace.v1';
-// Mixer settings (including remembered kills and crossfader sides) are saved at once, never lost to the 1 s clock throttle.
-const mixerKey=session=>JSON.stringify([session.mixer.crossfader,Object.values(session.decks).map(d=>[d.level,d.gain,d.hi,d.mid,d.low,d.assign,d.eqRestore])]);
 const UNSAVED='Changes are not saved on this device. Your current session remains open; allow browser storage to remember it.';
 
 /** Owns all local persistence. Layout renderers never read or write storage. */
@@ -46,8 +45,8 @@ export function createStore(storage) {
     dispatch(action) {
       const next=reduceSession(state,action);if(next===state) return;
       const transportChanged=Object.keys(state.decks).some(id=>state.decks[id].playing!==next.decks[id].playing||(!next.decks[id].playing&&state.decks[id].position!==next.decks[id].position));
-      const mixerChanged=mixerKey(state)!==mixerKey(next);
-      state=next;
+      const prior=state;state=next;
+      const mixerChanged=next.mixer.crossfader!==prior.mixer.crossfader||Object.keys(next.decks).some(id=>(MIXER_VALUE_FIELDS.some(field=>next.decks[id][field]!==prior.decks[id][field])||next.decks[id].assign!==prior.decks[id].assign||next.decks[id].eqRestore!==prior.decks[id].eqRestore));
       if(action.type!=='native-clock'||transportChanged||mixerChanged||Date.now()-lastPersist>=1000){
         try {storage.setItem(STORAGE_KEY,serializeSession(state));warning='';lastPersist=Date.now();}catch{warning=UNSAVED;}
       }

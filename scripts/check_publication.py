@@ -24,7 +24,13 @@ patterns = {
 }
 # Audit publishable source, not ignored builds, caches, or browser evidence.
 names = subprocess.check_output(['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'], cwd=ROOT).decode().split('\0')
-paths = [ROOT / name for name in sorted(set(names)) if name and (ROOT / name).is_file()]
+generated_roots = ('node_modules', 'dist', 'build', 'release', '.local', 'native/target', 'native/deck-craft-audio')
+def generated(name):
+    return any(name == root or name.startswith(root + '/') for root in generated_roots)
+for name in sorted(set(names)):
+    if name and generated(name):
+        errors.append(f'{name}: generated/cache path must not be published (including symlinks)')
+paths = [ROOT / name for name in sorted(set(names)) if name and not generated(name) and (ROOT / name).is_file()]
 for path in paths:
     text = path.read_text()
     for name, pattern in patterns.items():

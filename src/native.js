@@ -1,6 +1,8 @@
-import { DECK_IDS, trackById, registerLocalTrack, replaceLocalLibrary } from "./catalog.js";
-import { icon, timeLabel, paintWaveBox } from "./components.js";
-import { reduceSession, EQ_BANDS, ASSIGNMENTS } from "./session.js";
+import { reduceSession, EQ_BANDS, ASSIGNMENTS } from './session.js';
+import { DECK_IDS, trackById, registerLocalTrack, replaceLocalLibrary, setLocalWaveDetail } from "./catalog.js";
+import { SeekPump, SEEK_INTERVAL_MS, INPUT_SEEK_LEAD_MS } from "./scrub.js";
+import { MIXER_KNOBS, MIXER_VALUE_FIELDS } from "./mixer.js";
+const CONTROL_INTERVAL_MS=40;
 
 const nativeErrors = {
   audio_output_unavailable: "The default audio output is unavailable. Check PipeWire and your output device, then reconnect audio.",
@@ -13,18 +15,7 @@ const nativeErrors = {
   seek_failed: "The decoder could not seek this file.",
   load_cancelled: "The pending load was cancelled.",
   audio_command_timed_out: "The audio engine stopped responding. Reconnect audio; playback will not restart automatically.",
-  invalid_eq: "That EQ value is outside the supported range.",
-  invalid_gain: "That gain value is outside the supported range.",
-  invalid_band: "That EQ band does not exist.",
-  invalid_assignment: "That crossfader assignment is not supported.",
 };
-/** Peak (linear, 1.0 = full scale) -> 0..1 bar height on a -54 .. +3 dB scale; anything unusable is silent. */
-export function meterFraction(peak) {
-  if (typeof peak !== "number" || !Number.isFinite(peak) || peak <= 0) return 0;
-  const db = 20 * Math.log10(Math.min(peak, 16));
-  return Math.max(0, Math.min(1, (db + 54) / 57));
-}
-const meterText = (peak) => (typeof peak === "number" && Number.isFinite(peak) && peak > 0 ? Math.round(20 * Math.log10(Math.min(peak, 16))) + " dB" : "silent");
 export async function restoreNativeCatalog(bridge) {
   if (!bridge) return;
   const result = await bridge.command({ type: "library" });
@@ -35,11 +26,18 @@ export async function restoreNativeCatalog(bridge) {
 
 /** Native receipts own transport and its sample-derived clock, not DOM timers. */
 export class NativeSession {
-  constructor(bridge, store, { redraw, say }) {
+  constructor(bridge, store, { redraw, say, update, seek = {}, clock }) {
     this.bridge = bridge;
     this.store = store;
     this.redraw = redraw;
+    // A light repaint for transport changes (play/pause, a seek's loading flag); a full redraw is for engine readiness.
+    this.update = update || redraw;
     this.say = say;
+    this.seekTiming = { interval: seek.interval ?? SEEK_INTERVAL_MS, lead: seek.lead ?? INPUT_SEEK_LEAD_MS };
+    this.clock = clock;
+    this.painter = null;
+    this.scrubs = new Map();
+    this.inputSeeks = new Map();
     this.status = { ready: false, decks: [] };
     this.sequence = 0;
     this.engineId = null;
@@ -49,12 +47,28 @@ export class NativeSession {
     this.busy = new Set();
     this.owners = { A: 0, B: 0, C: 0, D: 0 };
     this.pending = new Map();
+    this.throttled = new Map();
+    // False from connection until the saved channel-strip values were restored to the engine, so the
+    // engine's neutral defaults can never overwrite the saved session.
+    this.mixerSynced = false;
     this.initialized = false;
     this.warning = "";
     bridge.onEvent((event) => {
       if (event.type === "import-progress") this.libraryUI?.progress(event);
       else if (event.type === "state") this.accept(event.snapshot, true);
-      else if (event.type === "track") {
+      else if (event.type === "waveform-detail") {
+        // Presentation data for the loaded deck only: never persisted, never a transport action.
+        try {
+          const active = this.status.decks.find(d => d.id === event.deck && d.trackId === event.trackId && d.waveGeneration === event.loadGeneration);
+          if (!this.status.ready || this.status.terminal || this.isRetired(event) ||
+              event.engineId !== this.engineId || event.sourceId !== this.sourceId ||
+              !Number.isSafeInteger(event.loadGeneration) || !active) return;
+          // The native load reply can still be awaiting persistence: cache the validated active
+          // source now, but never select it or grant transport authority from presentation data.
+          const loaded = DECK_IDS.map((id) => this.store.get().decks[id].trackId);
+          if (setLocalWaveDetail(event.trackId, event.detail, loaded)) { this.painter?.invalidate(); this.paintClock(); }
+        } catch {}
+      } else if (event.type === "track") {
         try {
           registerLocalTrack(event.track);
           if (Object.hasOwn(event, "warning")) this.warning = event.warning || "";
@@ -66,44 +80,48 @@ export class NativeSession {
   accept(snapshot, allowNew = false) {
     if (!snapshot || !Array.isArray(snapshot.decks)) return;
     if (this.isRetired(snapshot)) return;
+    let connectionChanged = false;
     if (snapshot.sourceId && snapshot.sourceId !== this.sourceId) {
       if (this.sourceId && !allowNew) return;
-      if (this.sourceId) this.retiredSources.add(this.sourceId);
+      if (this.sourceId) { this.retiredSources.add(this.sourceId); connectionChanged = true; }
       this.sourceId = snapshot.sourceId;
     }
     if (snapshot.engineId && snapshot.engineId !== this.engineId) {
       if (this.engineId && !allowNew) return;
-      if (this.engineId) this.retiredEngines.add(this.engineId);
+      if (this.engineId) { this.retiredEngines.add(this.engineId); connectionChanged = true; }
       this.engineId = snapshot.engineId;
       this.sequence = 0;
+      this.mixerSynced = false;
     }
     if (snapshot.terminal === true) {
       // Connection retirement is irreversible; native success ordering stays exact.
       if (snapshot.sourceId) this.retiredSources.add(snapshot.sourceId);
       if (snapshot.engineId) this.retiredEngines.add(snapshot.engineId);
       for (const id of DECK_IDS) this.takeOwnership(id);
-      for (const timer of this.pending.values()) clearTimeout(timer);
-      this.pending.clear();
+      this.mixerSynced = false;
+      for(const slot of this.throttled.values())clearTimeout(slot.timer);
+      this.throttled.clear();
     } else {
       if (Number.isFinite(snapshot.seq) && snapshot.seq <= this.sequence) return;
       this.sequence = snapshot.seq || this.sequence;
     }
+    if (snapshot.terminal !== true && (connectionChanged || !snapshot.ready))
+      for (const id of DECK_IDS) this.takeOwnership(id);
     const before = this.store.get();
-    const readyChanged =
-      this.status.ready !== snapshot.ready ||
-      DECK_IDS.some((id) => !!this.status.decks.find((d) => d.id === id)?.loading !== !!snapshot.decks.find((d) => d.id === id)?.loading);
+    const readyChanged = this.status.ready !== snapshot.ready;
+    const loadingChanged = DECK_IDS.some((id) => !!this.status.decks.find((d) => d.id === id)?.loading !== !!snapshot.decks.find((d) => d.id === id)?.loading);
     this.status = snapshot;
-    // While a (re)connecting engine is still being configured it holds default mixer settings:
-    // transport/clock follow it, the user's mixer settings do not.
-    this.store.dispatch({ type: "native-clock", snapshot, mixer: this.initialized });
+    this.store.dispatch({ type: "native-clock", snapshot, mixer: this.mixerSynced });
     const transportChanged = DECK_IDS.some((id) => before.decks[id].playing !== this.store.get().decks[id].playing);
-    if (readyChanged || transportChanged) this.redraw();
+    // Only engine readiness rebuilds the page. A seek's loading flag or a play/pause flip repaints the transport
+    // controls; an ordinary clock receipt repaints just the clocks and waveforms on the next animation frame.
+    if (readyChanged) this.redraw();
+    else if (loadingChanged || transportChanged) this.update();
     else this.paintClock();
   }
-  /** Only an engine that reports the complete channel mixer gets live EQ, meters and assignments. */
   get mixerSupported() {
-    const c = this.status.capabilities;
-    return !!c && c.channelEq === true && c.channelMeters === true && c.crossfaderAssign === true;
+    const c=this.status.capabilities;
+    return !!c&&c.channelEq===true&&c.channelMeters===true&&c.crossfaderAssign===true;
   }
   isRetired(snapshot) {
     return this.retiredSources.has(snapshot.sourceId) || this.retiredEngines.has(snapshot.engineId);
@@ -112,7 +130,85 @@ export class NativeSession {
     const key = deck + ":position";
     clearTimeout(this.pending.get(key));
     this.pending.delete(key);
+    // A newer action invalidates any open pointer gesture or slider burst for this deck: they drop their
+    // queued targets and can never replay after a load, pause, play, cue or reconnect.
+    const scrub = this.scrubs.get(deck);
+    if (scrub) this.scrubCancel(scrub);
+    this.inputSeeks.get(deck)?.pump.cancel();
+    this.inputSeeks.delete(deck);
     return ++this.owners[deck];
+  }
+  /**
+   * Begin a pointer or keyboard scrub of one deck. Returns {ok:false,message} when the deck cannot be sought
+   * (demo fixture, engine offline, loading, not yet loaded natively) so the UI never previews an impossible seek.
+   */
+  beginScrub(deck, { onCancel = () => {} } = {}) {
+    if (!this.initialized || !this.mixerSynced) return { ok: false, message: "Audio initialization or mixer restoration is still in progress." };
+    const state = this.store.get().decks[deck];
+    if (!trackById(state?.trackId)?.local) return { ok: false, message: "Demo fixtures contain no audio. Import a local audio file first." };
+    const actual = this.status.decks.find((item) => item.id === deck);
+    if (!this.status.ready) return { ok: false, message: nativeErrors.audio_output_unavailable };
+    if (this.busy.has(deck) || actual?.loading) return { ok: false, message: "Deck " + deck + " is still loading." };
+    if (actual?.trackId !== state.trackId) return { ok: false, message: "Deck " + deck + " has not finished loading this track." };
+    const owner = this.takeOwnership(deck);
+    const token = { deck, owner, wasPlaying: !!actual.playing, pump: null, onCancel };
+    token.pump = new SeekPump({
+      send: (position) => this.call({ type: "seek", deck, position }),
+      current: () => this.scrubLive(token),
+      onError: (error) => {
+        this.scrubCancel(token);
+        if (error.message !== "action_superseded") this.say(error.message);
+      },
+      interval: this.seekTiming.interval,
+      clock: this.clock,
+    });
+    this.scrubs.set(deck, token);
+    return { ok: true, token };
+  }
+  scrubLive(token) {
+    return this.scrubs.get(token.deck) === token && token.owner === this.owners[token.deck];
+  }
+  /** Interim target while the pointer is down. Only a deck that was playing is sought continuously. */
+  scrubMove(token, position, always = false) {
+    if (this.scrubLive(token) && (always || token.wasPlaying)) token.pump.move(position);
+  }
+  /** Final target. Resolves true only when native acknowledged exactly this seek; false means superseded or failed. */
+  scrubEnd(token, position) {
+    if (!this.scrubLive(token)) return Promise.resolve(false);
+    return token.pump.finish(position).then((ok) => {
+      if (this.scrubs.get(token.deck) === token) this.scrubs.delete(token.deck);
+      return ok;
+    });
+  }
+  scrubCancel(token) {
+    const current = this.scrubs.get(token.deck) === token;
+    if (current) this.scrubs.delete(token.deck);
+    token.pump.cancel();
+    if (current) token.onCancel();
+  }
+  /** Slider-style seek input (no explicit end event): coalesced, one request in flight, latest value wins. */
+  inputSeek(deck, position) {
+    let slot = this.inputSeeks.get(deck);
+    if (!slot || slot.pump.dead) {
+      const owner = this.takeOwnership(deck);
+      slot = { owner, pump: null };
+      slot.pump = new SeekPump({
+        send: async (value) => {
+          await this.ensureLoaded(deck, owner);
+          this.assertOwner(deck, owner);
+          await this.call({ type: "seek", deck, position: value });
+        },
+        current: () => this.inputSeeks.get(deck) === slot && owner === this.owners[deck],
+        onError: (error) => {
+          if (error.message !== "action_superseded") this.say(error.message);
+        },
+        interval: this.seekTiming.interval,
+        lead: this.seekTiming.lead,
+        clock: this.clock,
+      });
+      this.inputSeeks.set(deck, slot);
+    }
+    slot.pump.move(position);
   }
   async call(request) {
     const result = await this.bridge.command(request);
@@ -150,15 +246,12 @@ export class NativeSession {
         this.redraw();
         return;
       }
-      for (const id of DECK_IDS) await this.call({ type: "level", deck: id, value: saved.decks[id].level });
+      // Saved strip settings reach the engine before any restored (always paused) source is loaded.
+      for (const id of DECK_IDS)
+        for (const field of MIXER_VALUE_FIELDS) await this.call({ type: field, deck: id, value: saved.decks[id][field] });
       await this.call({ type: "crossfader", value: saved.mixer.crossfader });
-      if (this.mixerSupported)
-        for (const id of DECK_IDS) {
-          const d = saved.decks[id];
-          await this.call({ type: "gain", deck: id, value: d.gain });
-          for (const band of EQ_BANDS) await this.call({ type: "eq", deck: id, band, value: d[band] });
-          await this.call({ type: "assign", deck: id, side: d.assign });
-        }
+      if(this.mixerSupported)for(const id of DECK_IDS)await this.call({type:"assign",deck:id,side:saved.decks[id].assign});
+      this.mixerSynced = true;
       for (const id of DECK_IDS) {
         const d = saved.decks[id];
         if (!trackById(d.trackId)?.local) continue;
@@ -218,8 +311,7 @@ export class NativeSession {
       action.type === "cue" ||
       action.type === "hotCue" ||
       action.type === "mixer" ||
-      action.type === "assign" ||
-      action.type === "eq-kill" ||
+      action.type === "assign" || action.type === "eq-kill" ||
       action.type === "fx" ||
       (action.type === "deck" &&
         [
@@ -227,71 +319,67 @@ export class NativeSession {
           "position",
           "level",
           "pitch",
-          "gain",
-          "hi",
-          "mid",
-          "low",
-          "filter",
+          ...MIXER_KNOBS,
           "sync",
           "headphone",
           "loopEnabled",
           "loopLength",
         ].includes(action.field));
     if (!audioAction) return false;
-    if (!this.initialized) {
-      this.say("Audio initialization is still in progress.");
+    if (!this.initialized || (this.status.ready && !this.mixerSynced)) {
+      this.say(this.initialized ? "Mixer settings could not be restored. Reconnect audio before using playback or mixer controls." : "Audio initialization is still in progress.");
       return true;
     }
-    if (action.type === "eq-kill") {
-      const key = action.deck + ":" + action.band;
-      clearTimeout(this.pending.get(key));
-      this.pending.delete(key);
+    if(action.type==="eq-kill"){
+      const key=action.deck+":"+action.band,slot=this.throttled.get(key);
+      if(slot)clearTimeout(slot.timer);
+      this.throttled.delete(key);
     }
-    if ((action.type === "deck" && ["position", "level", "gain", ...EQ_BANDS].includes(action.field)) || action.type === "mixer") {
-      const key = action.type === "mixer" ? "crossfader" : action.deck + ":" + action.field;
-      clearTimeout(this.pending.get(key));
-      // A delayed gesture keeps its original owner, not the source present at fire time.
-      const owner = this.owners[action.deck];
-      this.pending.set(
-        key,
-        setTimeout(() => {
-          this.pending.delete(key);
-          if (action.field === "position" && owner !== this.owners[action.deck]) return;
-          this.perform(action).catch((error) => this.say(error.message));
-        }, 40),
-      );
+    if (action.type === "deck" && action.field === "position") this.inputSeek(action.deck, action.value);
+    else if (action.type === "mixer" || (action.type === "deck" && (action.field === "level" || MIXER_KNOBS.includes(action.field)))) {
+      this.throttle(action.type === "mixer" ? "crossfader" : action.deck + ":" + action.field, action);
     } else this.perform(action).catch((error) => this.say(error.message));
     return true;
   }
+  throttle(key, action) {
+    const slot = this.throttled.get(key) || { last: 0, timer: null, action: null };
+    this.throttled.set(key, slot);
+    slot.action = action;
+    if (slot.timer) return;
+    const fire = () => {
+      slot.timer = null;
+      slot.last = Date.now();
+      const next = slot.action;
+      slot.action = null;
+      this.perform(next).catch((error) => this.say(error.message));
+    };
+    const wait = Math.max(0, slot.last + CONTROL_INTERVAL_MS - Date.now());
+    if (wait === 0) fire();
+    else slot.timer = setTimeout(fire, wait);
+  }
   async perform(action) {
     const deck = action.deck;
+    if(action.type==="assign"||action.type==="eq-kill"){
+      if(!this.mixerSupported)throw Error("This audio engine needs updating for band kills and assignments.");
+      if(action.type==="assign"){
+        if(!ASSIGNMENTS.includes(action.value))throw Error("Invalid crossfader assignment");
+        await this.call({type:"assign",deck,side:action.value});
+      }else{
+        if(!EQ_BANDS.includes(action.band))return;
+        const before=this.store.get(),after=reduceSession(before,action);
+        if(after===before)return;
+        await this.call({type:action.band,deck,value:after.decks[deck][action.band]});
+        this.store.dispatch({type:"eq-memory",deck,band:action.band,value:after.decks[deck].eqRestore[action.band]});
+      }
+      return;
+    }
     if (action.type === "mixer") {
       if (action.field !== "crossfader") throw Error("This mixer function is not implemented.");
       await this.call({ type: "crossfader", value: action.value });
       return;
     }
-    if (action.type === "deck" && action.field === "level") {
-      await this.call({ type: "level", deck, value: action.value });
-      return;
-    }
-    if (action.type === "assign" || action.type === "eq-kill" || (action.type === "deck" && ["gain", ...EQ_BANDS].includes(action.field))) {
-      if (!this.mixerSupported) throw Error("This audio engine has no channel mixer. Reinstall Deck Craft to update it.");
-      if (action.type === "assign") {
-        if (!ASSIGNMENTS.includes(action.value)) throw Error("That crossfader assignment is not supported.");
-        await this.call({ type: "assign", deck, side: action.value });
-      } else if (action.type === "eq-kill") {
-        // The band is silenced (or restored) natively first; only then is the remembered knob position stored.
-        const before = this.store.get(),
-          after = reduceSession(before, action);
-        const target = after.decks[deck][action.band];
-        if (target === before.decks[deck][action.band]) return;
-        await this.call({ type: "eq", deck, band: action.band, value: target });
-        this.store.dispatch({ type: "eq-memory", deck, band: action.band, value: after.decks[deck].eqRestore[action.band] });
-      } else {
-        if (!Number.isFinite(action.value)) throw Error("That mixer value is not a number.");
-        if (action.field === "gain") await this.call({ type: "gain", deck, value: action.value });
-        else await this.call({ type: "eq", deck, band: action.field, value: action.value });
-      }
+    if (action.type === "deck" && (action.field === "level" || MIXER_KNOBS.includes(action.field))) {
+      await this.call({ type: action.field, deck, value: action.value });
       return;
     }
     if (action.type === "fx" || (action.type === "deck" && !["playing", "position"].includes(action.field)))
@@ -331,68 +419,37 @@ export class NativeSession {
       await this.call({ type: "seek", deck, position: action.value });
     } else if (action.type === "deck" && action.field === "playing") await this.call({ type: "play", deck });
   }
+  /** Gain, EQ and filter are real controls: they only wait for a connected, initialized engine. */
+  paintStrip() {
+    if (typeof document === "undefined") return;
+    const usable = this.status.ready && this.initialized && this.mixerSynced;
+    for(const el of document.querySelectorAll('[data-action="eq-kill"],[data-action="assign"]'))el.disabled=!usable||!this.mixerSupported;
+    for (const el of document.querySelectorAll([...MIXER_VALUE_FIELDS.map((field) => `input[data-field="${field}"]`), 'input[data-action="crossfader"]'].join(","))) {
+      el.disabled = !usable;
+      el.closest(".knob")?.classList.toggle("offline", !usable);
+    }
+  }
+  /** Native receipts are batched into the cached transport painter. */
   paintClock() {
+    this.painter?.mark();
+  }
+  /** Transport-only repaint: Play enablement and labels, plus the hidden-deck status text. */
+  paintTransport() {
     if (typeof document === "undefined") return;
     const state = this.store.get();
-    for (const id of DECK_IDS) {
-      const d = state.decks[id],
-        track = trackById(d.trackId);
-      for (const el of document.querySelectorAll(`section.deck[data-deck="${id}"] .elapsed`))
-        el.textContent = timeLabel(d.position, true) + (el.closest(".linear-clock") ? " / " + timeLabel(track.duration) : "");
-      for (const el of document.querySelectorAll(`section.deck[data-deck="${id}"] .remaining`))
-        el.textContent = "−" + timeLabel(track.duration - d.position, true);
-      for (const box of document.querySelectorAll(`[data-wave-deck="${id}"]`)) {
-        paintWaveBox(box, d.position / track.duration);
-        const seek = box.querySelector("input");
-        if (seek && document.activeElement !== seek) seek.value = d.position;
-      }
-      for (const field of ["level", "gain", ...EQ_BANDS]) {
-        for (const input of document.querySelectorAll(`[data-deck="${id}"][data-field="${field}"]`)) {
-          if (document.activeElement !== input) input.value = d[field];
-          const dial = input.closest(".knob")?.querySelector(".dial i");
-          if (dial) dial.style.transform = `rotate(${(d[field]-50)*2.7}deg)`;
-        }
-      }
-      for (const button of document.querySelectorAll(`[data-action="eq-kill"][data-deck="${id}"]`))
-        button.setAttribute("aria-pressed", String(d[button.dataset.band] === 0));
-      for (const button of document.querySelectorAll(`[data-action="assign"][data-deck="${id}"]`))
-        button.setAttribute("aria-pressed", String(d.assign === button.dataset.value));
+    for (const el of document.querySelectorAll('[data-field="playing"]')) {
+      if (el.closest(".design-preview")) continue;
+      const d = state.decks[el.dataset.deck];
+      el.disabled =
+        !this.status.ready ||
+        !this.initialized || !this.mixerSynced ||
+        !trackById(d.trackId)?.local ||
+        (!d.playing && !!this.status.decks.find((item) => item.id === el.dataset.deck)?.loading);
+      el.setAttribute("aria-label", (d.playing ? "Pause" : "Play") + " deck " + el.dataset.deck);
     }
-    for (const input of document.querySelectorAll('[data-action="crossfader"]'))
-      if (document.activeElement !== input) input.value = state.mixer.crossfader;
-    this.paintMeters();
-  }
-  /** Channel meters come only from accepted native receipts; a channel that is not playing is dark. */
-  paintMeters() {
-    if (typeof document === "undefined") return;
-    const live = this.status.ready === true && this.status.terminal !== true && this.mixerSupported;
     for (const id of DECK_IDS) {
-      const native = this.status.decks.find((d) => d.id === id);
-      const meter = native?.meter;
-      const on = live && native?.playing === true && !!meter && typeof meter === "object";
-      const peaks = on ? [meter.l, meter.r] : [0, 0];
-      for (const vu of document.querySelectorAll(`.vu[data-vu-deck="${id}"]`)) {
-        const bars = vu.querySelectorAll("i");
-        peaks.forEach((peak, i) => {
-          const bar = bars[i];
-          if (!bar) return;
-          const fraction = meterFraction(peak).toFixed(3);
-          if (bar.dataset.level !== fraction) {
-            bar.dataset.level = fraction;
-            bar.style.setProperty("--meter", fraction);
-          }
-          const clip = String(on && typeof peak === "number" && peak > 1);
-          if (bar.dataset.clip !== clip) bar.dataset.clip = clip;
-        });
-        const live_ = String(on);
-        if (vu.dataset.live !== live_) vu.dataset.live = live_;
-        const label = !this.mixerSupported
-          ? `Channel ${id} meter: unavailable from this audio engine`
-          : on
-            ? `Channel ${id} meter: ${meterText(peaks[0])} left, ${meterText(peaks[1])} right, after EQ and fader`
-            : `Channel ${id} meter: silent`;
-        if (vu.getAttribute("aria-label") !== label) vu.setAttribute("aria-label", label);
-      }
+      const hidden = document.querySelector(`[data-hidden-deck="${id}"] .hidden-state`);
+      if (hidden) hidden.textContent = state.decks[id].playing ? "Playing" : "Paused";
     }
   }
   paint() {
@@ -401,52 +458,55 @@ export class NativeSession {
     const state = this.store.get();
     const app = document.querySelector(".app");
     if (!app) return;
-    let bar = document.querySelector(".native-audio-bar");
-    if (!bar) {
-      bar = document.createElement("div");
-      bar.className = "native-audio-bar";
-      bar.innerHTML =
-        '<span class="native-audio-state" role="status"></span><button data-action="reconnect-audio">Reconnect audio</button><button data-action="library-import" data-kind="files">Add files to library</button><button class="native-import" data-action="import-audio">Import audio</button>';
-      document.querySelector(".persistence-warning").after(bar);
-    }
     const ready = this.status.ready;
-    bar.querySelector(".native-audio-state").textContent = this.busy.size
+    const busy = !!this.busy.size;
+    const summary = busy
       ? "Loading local audio…"
       : ready
-        ? "Audio ready · default Linux output · " + (this.status.output?.sampleRate || "—") + " Hz · load a local track, then press Play"
+        ? ""
         : this.status.error === "audio_engine_unavailable"
           ? "Audio engine could not start · check your desktop installation. Library import remains available."
           : "Audio output unavailable · check your device and reconnect. You can still organize your library.";
-    bar.querySelector('[data-action="reconnect-audio"]').hidden = ready;
-    const button = bar.querySelector(".native-import");
-    button.textContent = "Open file → Deck " + state.library.target;
-    button.disabled = !!this.busy.size || !ready || !this.initialized;
+    // The only band under the header appears while output is unavailable; the header chip covers transient work.
+    const bar = document.querySelector(".native-audio-bar");
+    if (bar) {
+      bar.hidden = (ready && this.mixerSynced) || !this.initialized;
+      const text = bar.querySelector(".native-audio-state");
+      if (text) text.textContent = ready && !this.mixerSynced ? "Mixer settings could not be restored. Reconnect audio to continue." : summary;
+    }
+    const chip = document.querySelector(".deckbar-status");
+    if (chip) chip.textContent = busy ? "Loading local audio…" : !ready && !this.initialized ? "Starting audio…" : "";
+    const detail = document.querySelector(".settings-audio-state");
+    if (detail) detail.textContent = summary;
+    for (const el of document.querySelectorAll('[data-action="reconnect-audio"]')) el.hidden = ready && (!this.initialized || this.mixerSynced);
+    const button = document.querySelector(".native-import");
+    if (button) {
+      button.textContent = "Open file → Deck " + state.library.target;
+      button.disabled = busy || !ready || !this.initialized;
+    }
     for (const el of document.querySelectorAll(".engine-label")) el.textContent = ready ? "NATIVE AUDIO" : "OUTPUT OFFLINE";
-    const version = document.querySelector(".wordmark small");
+    const version = document.querySelector(".deckbar-brand small");
     if (version) version.textContent = "0.3.1";
-    for (const el of document.querySelectorAll(".mobile-engine-notice")) el.textContent = "NATIVE PLAYBACK · EQ AND METERS · FX PENDING";
+    for (const el of document.querySelectorAll(".settings-note")) el.textContent = "NATIVE FILE PLAYBACK · ADVANCED DSP PENDING";
     for (const el of document.querySelectorAll(
-      '[data-field="sync"],[data-field="headphone"],[data-field="loopEnabled"],[data-field="pitch"],[data-action="loop-size"],[data-action="loop-length"],[data-action="toggle-fx"],[data-action="fx-wet"],[data-field="filter"]',
+      '[data-field="sync"],[data-field="headphone"],[data-field="loopEnabled"],[data-field="pitch"],[data-action="loop-size"],[data-action="loop-length"],[data-action="toggle-fx"],[data-action="fx-wet"]',
     )) {
       el.disabled = true;
       el.title = "Not implemented in this first audio milestone";
     }
-    // Channel gain, EQ (with kill) and crossfader assignment are real DSP when the engine reports them.
-    const mixerOn = ready && this.initialized && this.mixerSupported;
-    for (const el of document.querySelectorAll(
-      '[data-field="gain"],[data-field="hi"],[data-field="mid"],[data-field="low"],[data-action="eq-kill"],[data-action="assign"]',
-    ))
-      el.disabled = !mixerOn;
+    this.paintStrip();
     for (const el of document.querySelectorAll('[data-field="playing"]')) {
       const d = state.decks[el.dataset.deck];
       el.disabled =
         !ready ||
         !this.initialized ||
+        !this.mixerSynced ||
         !trackById(d.trackId)?.local ||
         (!d.playing && !!this.status.decks.find((item) => item.id === el.dataset.deck)?.loading);
       el.setAttribute("aria-label", (d.playing ? "Pause" : "Play") + " deck " + el.dataset.deck);
     }
     for (const el of document.querySelectorAll(".fx-trailing")) el.textContent = "FX NOT IMPLEMENTED";
+
     for (const el of document.querySelectorAll(".rail-bottom")) el.textContent = "Local audio only · no uploads";
     for (const el of document.querySelectorAll(".load-choice>span")) el.textContent = "Local files play; demo rows are fixtures";
     for (const el of document.querySelectorAll(".rail-heading.second")) el.textContent = "LOCAL + DEMO COLLECTION";
@@ -456,41 +516,36 @@ export class NativeSession {
       for (const section of document.querySelectorAll(`section.deck[data-deck="${id}"]`)) {
         if (local) {
           for (const el of section.querySelectorAll(".bpm-value")) el.textContent = "—";
-          for (const el of section.querySelectorAll(".beat-dots")) el.textContent = "PCM";
-          for (const el of section.querySelectorAll(".linear-phrase")) el.textContent = "Audio waveform · beat analysis pending";
-          for (const el of section.querySelectorAll(".pads .pad span")) el.textContent = "MANUAL CUE";
+          for (const el of section.querySelectorAll(".pads .pad .pad-name")) el.textContent = "CUE";
         }
       }
-      const hidden = document.querySelector(`[data-hidden-deck="${id}"] .hidden-state`);
-      if (hidden) hidden.textContent = state.decks[id].playing ? "Playing" : "Paused";
     }
     for (const row of document.querySelectorAll("tr[data-track-id]"))
       if (trackById(row.dataset.trackId)?.local) row.querySelector(".bpm-cell").textContent = "—";
-    for (const el of document.querySelectorAll(".precision-ruler")) el.textContent = "TRACK OVERVIEW · NO BEAT GRID";
-    for (const el of document.querySelectorAll(".plot-toolbar .section-label")) el.textContent = "TRACK OVERVIEWS · NO BEAT GRID";
-    for (const el of document.querySelectorAll(".sync-top>div:first-child strong")) el.textContent = "Track overviews";
-    for (const el of document.querySelectorAll(".sync-top>div:first-child span")) el.textContent = "Independent timelines · no beat sync";
     const footer = document.querySelector(".statusbar>span");
     if (footer)
       footer.textContent = ready
-        ? "Native audio · local files · gain, 3-band EQ, meters and crossfader assignment · FX / sync / headphone routing not implemented"
+        ? "Native audio · local files · gain / full-kill EQ / filter / meters live · FX / sync / headphone routing not implemented"
         : "Audio offline · playback is paused";
     const info = document.querySelector(".info-dialog");
     if (info && !info.dataset.native) {
       info.dataset.native = "true";
       info.innerHTML =
-        '<h2>Deck Craft · native audio foundation</h2><p>Five layouts share one four-deck session. Local files are decoded and played by a separate Rust engine using Rodio and CPAL through the default Linux audio device.</p><p>Play, pause, seek, manual cue points, channel gain, a three-band EQ with full kill, channel faders, post-fader peak meters and a per-channel left / thru / right crossfader assignment use native audio. Imported waveforms come from decoded PCM; BPM, key, beat grids, time stretching, loops, the filter, effects, controller support and headphone routing are not implemented yet.</p><p>No network service or music upload. Restored transport is always paused. Device latency has not been benchmarked.</p><button class="dialog-close" data-action="close-info">Back to the decks</button>';
+        '<h2>Deck Craft · native audio foundation</h2><p>One session drives four decks. Local files are decoded and played by a separate Rust engine using Rodio and CPAL through the default Linux audio device.</p><p>Play, pause, seek, manual cue points, per-deck gain, three-band EQ and sweep filter, channel levels, full-kill EQ, native stereo peak meters and L/R/THRU assignments use native audio. Imported waveforms come from decoded PCM; BPM, key, beat grids, time stretching, loops, effects, controller support and headphone routing are not implemented yet.</p><p>No network service or music upload. Restored transport is always paused. Device latency has not been benchmarked.</p><button class="dialog-close" data-action="close-info">Back to the decks</button>';
     }
     const mixerInfo = document.querySelector(".mixer-dialog>p");
-    if (mixerInfo) mixerInfo.textContent = "Native gain, EQ with band kill, faders, meters and crossfader assignment · filter, FX and headphone cue not implemented";
+    if (mixerInfo) mixerInfo.textContent = "FX and headphone cue are not implemented · gain, EQ, filter and levels are live in the console mixer";
     const about = document.querySelector(".footer-info");
     if (about) about.textContent = "About / audio";
     this.paintClock();
   }
   async reconnect() {
-    for (const id of DECK_IDS) ++this.owners[id];
+    for (const id of DECK_IDS) this.takeOwnership(id);
     for (const timer of this.pending.values()) clearTimeout(timer);
     this.pending.clear();
+    for (const slot of this.throttled.values()) clearTimeout(slot.timer);
+    this.throttled.clear();
+    this.mixerSynced = false;
     this.initialized = false;
     try {
       await this.call({ type: "reconnect" });

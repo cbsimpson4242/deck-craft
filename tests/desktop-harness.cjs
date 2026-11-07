@@ -54,14 +54,15 @@ async function run() {
     await fs.writeFile(path.join(musicFolder, "Broken fixture.wav"), "not audio");
   }
   const errors = [];
-  app.on("web-contents-created", (_event, contents) =>
+  app.on("web-contents-created", (_event, contents) => {
     contents.on("console-message", (event) => {
       if (event.level === "error") {
         errors.push(event.message);
         console.error("Renderer error", event.message);
       }
-    }),
-  );
+    });
+    contents.on("dom-ready", () => contents.executeJavaScript(`window.__deckDetail=[];window.deckCraftNative.onEvent(e=>{if(e.type==='waveform-detail'){const p=atob(e.detail.peak),r=atob(e.detail.rms),m=[...p].slice(16,-16).map(c=>c.charCodeAt(0)),q=[...r].slice(16,-16).map(c=>c.charCodeAt(0));window.__deckDetail.push({trackId:e.trackId,bins:e.detail.bins,peak:e.detail.peak,peakMin:Math.min(...m),peakMax:Math.max(...m),rmsMin:Math.min(...q),rmsMax:Math.max(...q),keys:Object.keys(e.detail).sort().join()});}});void 0;`).catch(e=>errors.push(e.message)));
+  });
   const desktop = await startDesktop({
     userData: path.join(dir, phase === "offline" ? "offline-user-data" : "user-data"),
     enginePath: process.env.DECKCRAFT_TEST_ENGINE || path.resolve(__dirname, "../native/target/debug/deck-craft-audio"),
@@ -94,36 +95,55 @@ async function run() {
       throw error;
     });
   const command = (object) => js(`window.deckCraftNative.command(${JSON.stringify(object)})`);
+  // Relocated controls are exercised through visible Settings, never a closed dialog.
+  // Trusted Electron pointer input also verifies the actual compact-header access path.
+  let pointerSequence=0;
+  const pointerClick = async selector => {
+    const receipt=++pointerSequence;
+    const point = await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw Error('Missing control');e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;if(!r.width||!r.height||!document.elementFromPoint(x,y)?.closest(${JSON.stringify(selector)}))throw Error('Unreachable control: '+${JSON.stringify(selector)});window.__pointerReceipt=0;document.addEventListener('click',()=>{window.__pointerReceipt=${receipt}},{once:true});return {x:Math.round(x),y:Math.round(y)}})()`);
+    window.webContents.sendInputEvent({type:'mouseMove',...point});
+    window.webContents.sendInputEvent({type:'mouseDown',...point,button:'left',clickCount:1});
+    window.webContents.sendInputEvent({type:'mouseUp',...point,button:'left',clickCount:1});
+    await until(()=>js(`window.__pointerReceipt===${receipt}`),'trusted pointer click delivered');
+  };
+  const openSettings = async () => {
+    if (!(await js("document.querySelector('.settings-dialog').open"))) await pointerClick('.settings-open');
+    await until(()=>js("document.querySelector('.settings-dialog').open"),'visible Settings');
+  };
+  const settingsClick = async selector => {
+    await openSettings(); await pointerClick(selector);
+    await until(async()=>!(await js("document.querySelector('.settings-dialog').open")),'Settings action closes dialog');
+  };
+
   const session = () => js("JSON.parse(localStorage.getItem('deck-craft.ui.v1'))");
   if (phase === "offline") {
-    await until(() => js("Boolean(document.querySelector('[data-action=library-import]'))"), "offline library UI");
+    await until(() => js("Boolean(document.querySelector('.local-library .table-wrap'))"), "offline table-only library UI");
     assert.equal((await command({ type: "status" })).snapshot.ready, false);
-    await js("document.querySelector('[data-action=library-import][data-kind=files]').click()");
-    await until(async () => (await command({ type: "library" })).tracks.length === 2, "real decoder import with no output device");
-    await until(() => js("!document.querySelector('[data-action=library-import]').disabled"), "offline import settled");
+    const imported = await command({ type: "import", kind: "files" });
+    assert.equal(imported.ok, true);assert.equal(imported.tracks.length, 2);
     const snapshot = (await command({ type: "status" })).snapshot;
     assert.equal(snapshot.ready, false);
     assert.ok(snapshot.decks.every(d => !d.trackId && !d.playing));
     assert.equal(await js("document.querySelector('.native-import').disabled"), true);
-    assert.equal(await js("document.querySelector('[data-action=library-import]').disabled"), false);
+    assert.equal(await js("document.querySelectorAll('.local-library [data-action=library-import]').length"), 0);
+    assert.equal(await js("[...document.querySelectorAll('input[data-field=filter],input[data-field=gain]')].every(i=>i.disabled)"), true, "gain/EQ/filter wait for an engine");
     const retainedId = (await command({ type: "library" })).tracks[0].id;
+    await js("document.querySelector('[data-action=mode][data-value=prepare]').click()");
     await js(`{const s=JSON.parse(localStorage.getItem('deck-craft.ui.v1'));s.decks.A.trackId=${JSON.stringify(retainedId)};s.decks.A.position=0;s.decks.A.playing=false;localStorage.setItem('deck-craft.ui.v1',JSON.stringify(s));}`);
     window.webContents.reload();
-    await until(() => js("Boolean(document.querySelector('[data-action=library-forget]'))"), "restored offline deck selection");
+    await until(() => js("Boolean(document.querySelector('.local-library .table-wrap'))"), "restored offline deck selection");
     assert.equal((await session()).decks.A.trackId, retainedId);
     assert.ok((await command({ type: "status" })).snapshot.decks.every(d => !d.trackId));
     assert.equal((await command({ type: "forget", trackIds: [retainedId] })).error, "track_in_use");
-    await js(`document.querySelector('[data-action="library-select"][data-track="${retainedId}"]').click();document.querySelector('[data-action="library-forget"]').click();document.querySelector('[data-action="library-save"]').click();`);
-    await until(() => js("document.querySelector('.library-feedback').textContent.includes('assigned to a deck')"), "offline UI removal refused before mutation");
     assert.equal((await command({ type: "library" })).tracks.length, 2);
     const offlineEngine = (await command({ type: "status" })).snapshot.engineId;
-    await js("document.querySelector('[data-action=reconnect-audio]').click()");
+    await pointerClick(".native-audio-bar [data-action=reconnect-audio]");
     await until(async () => (await command({ type: "status" })).snapshot.engineId !== offlineEngine, "offline engine reconnect");
     assert.equal((await command({ type: "forget", trackIds: [retainedId] })).error, "track_in_use");
     assert.equal((await command({ type: "retain-track", deck: "A", trackId: "local-00000000-0000-0000-0000-000000000000" })).ok, false);
     assert.equal((await command({ type: "forget", trackIds: [retainedId] })).error, "track_in_use");
     assert.deepEqual(errors, []);
-    const report = { phase, checks: ["Files import through the actual decoder with no audio output device", "Offline deck controls remain disabled while library organization stays available", "Renderer-selected tracks remain protected from UI and direct IPC removal after offline restart and engine reconnect"], physicalDeviceTested: false };
+    const report = { phase, checks: ["Files import through the actual decoder with no audio output device", "Offline deck controls remain disabled while library organization stays available", "Renderer-selected tracks remain protected from direct IPC removal after offline restart and engine reconnect; removed toolbar is not reintroduced"], physicalDeviceTested: false };
     await fs.writeFile(path.join(dir, "desktop-offline.json"), JSON.stringify(report, null, 2));
     app.quit();
     return;
@@ -141,8 +161,10 @@ async function run() {
   assert.equal((await command({ type: "status", path: "/etc/passwd" })).ok, false);
   assert.equal((await command({ type: "shell", value: "arbitrary" })).ok, false);
   checks.push("Extra fields and arbitrary commands rejected at privileged IPC boundary");
+  const canvasInk = () =>
+    js(`(()=>{const c=document.querySelector('section.deck[data-deck=A] canvas.wave-canvas');if(!c||!c.width||!c.height)return 0;const d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let n=0;for(let i=3;i<d.length;i+=4)if(d[i]>200)n++;return n;})()`);
   if (phase === "first") {
-    await js("document.querySelector('[data-action=import-audio]').click()");
+    await settingsClick(".native-import");
     if (realDialog) {
       await delay(500);
       console.log(
@@ -205,50 +227,51 @@ async function run() {
       () => js("document.querySelector('section.deck[data-deck=A] .waveform')?.getAttribute('aria-label')?.startsWith('PCM amplitude')"),
       "decoded real waveform",
     );
+    const detailEvent = await until(() => js(`window.__deckDetail.find(e=>e.trackId===${JSON.stringify(idA)})||null`), "native fine waveform detail forwarded to the renderer");
+    // 30 s generated 440 Hz sine at 6000/32768: 64 bins per second, peak about 47/255, RMS about 33/255.
+    assert.equal(detailEvent.bins, 1920);
+    assert.equal(detailEvent.keys, "bins,peak,rms");
+    assert.ok(detailEvent.peakMin >= 44 && detailEvent.peakMax <= 49, JSON.stringify({ ...detailEvent, peak: "" }));
+    assert.ok(detailEvent.rmsMin >= 31 && detailEvent.rmsMax <= 36, JSON.stringify({ ...detailEvent, peak: "" }));
+    await until(async () => (await canvasInk()) > 200, "waveform canvas painted from decoded data");
+    assert.ok(!(await fs.readFile(path.join(dir, "user-data/library.json"), "utf8")).includes(detailEvent.peak), "session-only detail is not persisted in the registry");
+    assert.ok(!(await js("localStorage.getItem('deck-craft.ui.v1')")).includes(detailEvent.peak), "session-only detail is not persisted in the renderer snapshot");
+    checks.push("Real engine detail (1,920 bins, peak/RMS levels from the generated sine) reaches a painted canvas and is never persisted");
+    assert.ok(Math.abs(await js("document.querySelector('.deckbar').getBoundingClientRect().height")-52)<=1);
+    await fs.writeFile(path.join(dir,"compact-waveform-closed.png"),(await window.webContents.capturePage()).toPNG());
+    await openSettings();
+    assert.equal(await js("document.querySelector('.settings-dialog').open"),true);
+    await fs.writeFile(path.join(dir,"compact-waveform-open.png"),(await window.webContents.capturePage()).toPNG());
+    await pointerClick('.settings-close');
+    checks.push("Real Electron application bar and Settings remain reachable with decoded waveforms; file selection uses the visible dialog");
     await js("document.querySelector('section.deck[data-deck=A] [data-field=playing]').click()");
     await until(async () => (await command({ type: "status" })).snapshot.decks[0].playing, "actual native play from UI");
-    await js("document.querySelector('[data-action=open-mixer]').click()");
-    const strip = ".mixer-dialog ";
-    const setBand = async (band,value) => {
-      await js(`{const x=document.querySelector('.mixer-dialog [data-deck=A][data-field="${band}"]');x.value=${value};x.dispatchEvent(new Event('input',{bubbles:true}));}`);
-      await until(async()=>(await command({type:"status"})).snapshot.decks[0][band]===value,"native "+band+" knob");
-    };
-    await setBand("hi",71);
-    await js("document.querySelector('.mixer-dialog [data-action=eq-kill][data-deck=A][data-band=hi]').click()");
-    await until(async()=>(await command({type:"status"})).snapshot.decks[0].hi===0,"label full kill");
-    await until(()=>js("document.querySelector('.mixer-dialog [data-action=eq-kill][data-deck=A][data-band=hi]').getAttribute('aria-pressed')==='true'"),"kill visual state");
-    await js("document.querySelector('.mixer-dialog [data-action=eq-kill][data-deck=A][data-band=hi]').click()");
-    await until(async()=>(await command({type:"status"})).snapshot.decks[0].hi===71,"label restores prior knob");
-    await setBand("hi",50);
-    await until(()=>js("parseFloat(getComputedStyle(document.querySelector('.mixer-dialog [data-vu-deck=A] i')).height)>0"),"actual meter has nonzero rendered height");
-    for(const deck of ["A","B","C","D"]){
-      await js(`document.querySelector('.mixer-dialog [data-action=assign][data-deck=${deck}][data-value=right]').click()`);
-      await until(async()=>(await command({type:"status"})).snapshot.decks.find(d=>d.id===deck).assign==="right","UI assignment "+deck);
-    }
-    await js("document.querySelector('.mixer-dialog [data-action=assign][data-deck=A][data-value=left]').click()");
-    await until(async()=>(await command({type:"status"})).snapshot.decks[0].assign==="left","restore A routing");
-    await js("document.querySelector('[data-action=close-mixer]').click()");
-    checks.push("Real mixer UI: kill/restore native EQ, visible signal meter, all four crossfader assignments");
+    await until(()=>js("parseFloat(getComputedStyle(document.querySelector('.console-row [data-vu-deck=A] i')).height)>0"),"live native meter paints visible signal");
     const start = (await command({ type: "status" })).snapshot;
-    const layouts = ["signal-one", "signal-wide", "studio-grid", "studio-linear", "studio-sync"];
+    const steps = [
+      '[data-action="mode"][data-value="prepare"]',
+      '[data-action="mode"][data-value="perform"]',
+      '[data-action="pair"][data-value="cd"]',
+      '[data-action="pair"][data-value="ab"]',
+      ".canvas-entry",
+      '[data-action="mode"][data-value="perform"]',
+    ];
     let transitions = 0;
-    for (const from of layouts)
-      for (const to of layouts) {
-        await js(
-          `{const p=document.querySelector('.layout-picker');p.value=${JSON.stringify(from)};p.dispatchEvent(new Event('change',{bubbles:true}));p.value=${JSON.stringify(to)};document.querySelector('.layout-picker').value=${JSON.stringify(to)};document.querySelector('.layout-picker').dispatchEvent(new Event('change',{bubbles:true}));}`,
-        );
-        const native = (await command({ type: "status" })).snapshot;
-        assert.equal(native.engineId, start.engineId);
-        assert.equal(native.decks[0].trackId, idA);
-        assert.equal(native.decks[0].loadGeneration, start.decks[0].loadGeneration);
-        assert.equal(native.decks[0].playing, true);
-        assert.equal(await js('document.querySelectorAll("iframe").length'), 0);
-        transitions++;
-      }
-    checks.push(transitions + " layout transitions preserve the same playing native source without reload");
-    await require('./canvas-desktop.cjs')({ js, command, until, checks, start, idA, dir, window });
+    for (const selector of steps) {
+      await js(`document.querySelector(${JSON.stringify(selector)}).click()`);
+      const native = (await command({ type: "status" })).snapshot;
+      assert.equal(native.engineId, start.engineId);
+      assert.equal(native.decks[0].trackId, idA);
+      assert.equal(native.decks[0].loadGeneration, start.decks[0].loadGeneration);
+      assert.equal(native.decks[0].playing, true);
+      assert.equal(await js('document.querySelectorAll("iframe").length'), 0);
+      transitions++;
+    }
+    checks.push(transitions + " presentation changes (mode, deck pair, build round trip) preserve the same playing native source without reload");
+    await require('./canvas-desktop.cjs')({ js, command, until, checks, start, idA, dir, window, pointerClick, settingsClick });
     await js("document.querySelector('section.deck[data-deck=A] [data-field=playing]').click()");
     await until(async () => !(await command({ type: "status" })).snapshot.decks[0].playing, "UI pause");
+    await require("./scrub-desktop.cjs")({js,command,until,checks,window});
     await js(
       "{const x=document.querySelector('[data-wave-deck=A] .wave-seek');x.value=12.3;x.dispatchEvent(new Event('input',{bubbles:true}));}",
     );
@@ -260,26 +283,30 @@ async function run() {
       "document.querySelector('[data-action=hot-cue][data-deck=A][data-index=\"1\"]').dispatchEvent(new MouseEvent('click',{bubbles:true,shiftKey:true}))",
     );
     checks.push("UI pause, seek and manual cue storage follow native position");
-    await js(
-      `{const t=document.querySelector('.load-target');t.value='B';t.dispatchEvent(new Event('change',{bubbles:true}));document.querySelector('tr[data-track-id="${idA}"] .load').click();}`,
-    );
+    // Table-only UI retains the saved target but no longer exposes its old picker. Seed that
+    // persisted preference and exercise the real row-loading control after renderer restoration.
+    await js("{const s=JSON.parse(localStorage.getItem('deck-craft.ui.v1'));s.library.target='B';localStorage.setItem('deck-craft.ui.v1',JSON.stringify(s));}");
+    window.webContents.reload();
+    await until(ready, "renderer restored before second deck row load");
+    await js(`document.querySelector('tr[data-track-id="${idA}"] .load').click()`);
     await until(async () => (await session()).decks.B.trackId === idA, "second deck loads selected local source");
     await js(
-      "{const p=document.querySelector('.layout-picker');p.value='studio-linear';p.dispatchEvent(new Event('change',{bubbles:true}));}",
+      "{const p=document.querySelector('.theme-picker');p.value='daylight';p.dispatchEvent(new Event('change',{bubbles:true}));}",
     );
     await delay(250);
     s = await session();
-    assert.equal(s.layout, "studio-linear");
+    assert.equal(s.theme, "daylight");
     assert.ok(Math.abs(s.decks.A.cues[1] - 12.3) < 0.02);
     assert.ok(!s.decks.A.playing && !s.decks.B.playing);
     checks.push("Second deck loads independently and final musical state is saved paused");
+    const stripExpected = await require("./mixer-desktop.cjs")({ js, command, until, checks, phase });
     const libraryExpected = realDialog ? {} : await require("./library-desktop.cjs")({ js, command, until, checks, idA, phase });
-    await js("{const p=document.querySelector('.layout-picker');p.value='studio-linear';p.dispatchEvent(new Event('change',{bubbles:true}));}");
+    await js("{const p=document.querySelector('.theme-picker');p.value='daylight';p.dispatchEvent(new Event('change',{bubbles:true}));}");
     await delay(250);
     s = await session();
     await fs.writeFile(
       path.join(dir, "expected.json"),
-      JSON.stringify({ trackId: idA, position: s.decks.A.position, cues: s.decks.A.cues, engineId: start.engineId, assignments:Object.values(s.decks).map(d=>d.assign), ...libraryExpected }),
+      JSON.stringify({ trackId: idA, position: s.decks.A.position, cues: s.decks.A.cues, engineId: start.engineId, ...libraryExpected, ...stripExpected }),
     );
     const image = await window.webContents.capturePage();
     await fs.writeFile(path.join(dir, "desktop.png"), image.toPNG());
@@ -291,23 +318,30 @@ async function run() {
     }, "restored real native source and position");
     const s = await session(),
       native = (await command({ type: "status" })).snapshot;
-    assert.equal(s.layout, "studio-linear");
+    assert.equal(s.theme, "daylight");
     assert.deepEqual(s.decks.A.cues, expected.cues);
     assert.notEqual(native.engineId, expected.engineId);
-    assert.deepEqual(native.decks.map(d=>d.assign),expected.assignments);
-    assert.ok(native.decks.every(d=>d.meter.l===0&&d.meter.r===0));
     assert.ok(native.decks.every((d) => !d.playing));
     assert.equal(s.decks.B.trackId, expected.trackId);
-    checks.push("Complete app restart restores layout, local tracks, positions and cues, but never starts playback");
+    checks.push("Complete app restart restores theme, local tracks, positions and cues, but never starts playback");
+    const restoredDetail=await until(()=>js(`window.__deckDetail?.find(e=>e.trackId===${JSON.stringify(expected.trackId)})||null`),"fresh real native detail on full restart");
+    assert.equal(restoredDetail.bins,1920);assert.ok(restoredDetail.peakMin>=44&&restoredDetail.peakMax<=49);assert.ok(restoredDetail.rmsMin>=31&&restoredDetail.rmsMax<=36);
+    // The table-only library lane deliberately saved Library mode. Reveal Perform before inspecting
+    // a canvas that is correctly not painted while its workspace is hidden.
+    await pointerClick('[data-action="mode"][data-value="perform"]');
+    await until(async () => (await canvasInk()) > 200, "restored deck waveform repainted from freshly analyzed data");
+    assert.ok((await command({type:"status"})).snapshot.decks.every(d=>!d.playing));
+    checks.push("Full restart receives fresh real native peak/RMS detail and paints the restored canvas without autoplay");
+    if (expected.strip) await require("./mixer-desktop.cjs")({ js, command, until, checks, phase, expected });
     if (expected.collections) await require("./library-desktop.cjs")({ js, command, until, checks, phase, expected });
   }
   const bounds = await js(
-    '({width:innerWidth,scroll:document.documentElement.scrollWidth,choices:document.querySelector(".layout-picker").options.length,errors:[]})',
+    '({width:innerWidth,scroll:document.documentElement.scrollWidth,choices:document.querySelector(".theme-picker").options.length,errors:[]})',
   );
   assert.ok(bounds.scroll <= bounds.width);
-  assert.equal(bounds.choices, 6);
+  assert.equal(bounds.choices, 3);
   assert.deepEqual(errors, []);
-  checks.push("Five original layouts plus custom canvas, no horizontal overflow, no renderer errors");
+  checks.push("Console, library and build views, no horizontal overflow, no renderer errors");
   await fs.writeFile(
     path.join(dir, "desktop-" + phase + ".json"),
     JSON.stringify({ phase, checks, bounds, physicalDeviceTested: false }, null, 2),

@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createSession,reduceSession,restoreSession,serializeSession} from '../src/session.js';
 import {createStore,STORAGE_KEY} from '../src/store.js';
-import {NativeSession,meterFraction} from '../src/native.js';
+import {NativeSession} from '../src/native.js';
+import {meterFraction} from '../src/mixer.js';
 import {mixer} from '../src/components.js';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
@@ -43,7 +44,7 @@ test('all four assignments survive layouts and old snapshots keep original routi
 test('semantic mixer IPC rejects extra fields, nonfinite values and invalid routing',()=>{
  for(const deck of ['A','B','C','D']){
   for(const side of ['left','right','thru']) assert.doesNotThrow(()=>validateIPC({type:'assign',deck,side}));
-  for(const band of ['hi','mid','low']) assert.doesNotThrow(()=>validateIPC({type:'eq',deck,band,value:0}));
+  for(const band of ['hi','mid','low']) assert.doesNotThrow(()=>validateIPC({type:band,deck,value:0}));
  }
  for(const req of [{type:'eq',deck:'A',band:'high',value:0},{type:'eq',deck:'A',band:'hi',value:NaN},{type:'assign',deck:'C',side:'both'},{type:'assign',deck:'D',side:'left',path:'/x'}]) assert.throws(()=>validateIPC(req));
 });
@@ -57,7 +58,7 @@ test('shared mixer renders independent accessible band and assignment controls',
  const html=mixer(createSession(),['A','B','C','D']);
  assert.equal((html.match(/data-action="eq-kill"/g)||[]).length,12);
  assert.equal((html.match(/data-action="assign"/g)||[]).length,12);
- assert.equal((html.match(/data-vu-deck=/g)||[]).length,4);
+ assert.equal((html.match(/data-vu-deck=/g)||[]).length,8);
 });
 test('native kill beats pending slider and remembers acknowledged value',async()=>{
  const store=createStore({getItem(){return null},setItem(){}});
@@ -68,12 +69,14 @@ test('native kill beats pending slider and remembers acknowledged value',async()
  const bridge={onEvent(){},async command(r){
   calls.push(r);
   const decks=Object.entries(store.get().decks).map(([id,d])=>({id,trackId:null,playing:false,level:d.level,gain:d.gain,hi:d.hi,mid:d.mid,low:d.low,assign:d.assign}));
-  if(r.type==='eq') decks.find(d=>d.id===r.deck)[r.band]=r.value;
+  if(['hi','mid','low'].includes(r.type)) decks.find(d=>d.id===r.deck)[r.type]=r.value;
   return {ok:true,snapshot:{ready:true,engineId:'mixer-test',seq:++seq,decks,crossfader:50,capabilities:{channelEq:true,channelMeters:true,crossfaderAssign:true}}};
  }};
  n=new NativeSession(bridge,store,{redraw(){},say(){}});
  n.initialized=true;
  n.accept((await bridge.command({type:'status'})).snapshot,true);
+ n.mixerSynced=true;
+ n.throttled.set('A:hi',{last:Date.now(),timer:null,action:null});
  n.dispatch({type:'deck',deck:'A',field:'hi',value:81});
  n.dispatch({type:'eq-kill',deck:'A',band:'hi',kill:true});
  await new Promise(r=>setTimeout(r,70));
@@ -108,6 +111,7 @@ test('disconnect discards deferred mixer gestures before reconnect',async()=>{
  const calls=[];
  const n=new NativeSession({onEvent(){},async command(r){calls.push(r);return {ok:true}}},store,{redraw(){},say(){}});
  n.initialized=true;
+ for(const key of ['A:hi','crossfader'])n.throttled.set(key,{last:Date.now(),timer:null,action:null});
  n.dispatch({type:'deck',deck:'A',field:'hi',value:81});
  n.dispatch({type:'mixer',field:'crossfader',value:14});
  n.accept({sourceId:'closed-source',engineId:'closed-engine',seq:1,terminal:true,ready:false,decks:[]},true);

@@ -16,10 +16,10 @@ const lum = hex => { const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 
 const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
 const memory = () => { const data = new Map(); return { getItem: k => data.has(k) ? data.get(k) : null, setItem: (k, v) => data.set(k, v), data }; };
 
-test('five themes define the same token set and meet contrast minimums', () => {
-  assert.deepEqual(THEMES.map(t => t.id), ['graphite', 'midnight', 'ember', 'orchid', 'daylight']);
+test('three themes define the same token set and meet contrast minimums', () => {
+  assert.deepEqual(THEMES.map(t => t.id), ['graphite', 'ember', 'daylight']);
   assert.equal(DEFAULT_THEME, 'graphite');
-  const keys = ['bg', 'panel', 'raised', 'raised2', 'well', 'line', 'ink', 'muted', 'faint', 'accent', 'accent-ink', 'a', 'b', 'c', 'd'];
+  const keys = ['bg', 'panel', 'raised', 'raised2', 'well', 'line', 'line2', 'ink', 'muted', 'faint', 'accent', 'accent-ink', 'a', 'b', 'c', 'd'];
   for (const { id } of THEMES) {
     const t = tokens(id);
     assert.deepEqual(Object.keys(t).sort(), [...keys].sort(), id + ' token set');
@@ -34,11 +34,13 @@ test('five themes define the same token set and meet contrast minimums', () => {
   }
 });
 
-test('themes never redefine the fixed Play, cue and waveform treatments', () => {
-  assert.ok(!/--(play|cue|glass)[a-z0-9-]*\s*:/.test(css.replace(/body\{--glass:#0c0d0e\}/, '')), 'only the shared glass default is declared');
+test('themes never redefine the fixed cue and waveform treatments', () => {
+  assert.equal((css.match(/--glass\s*:/g) || []).length, 1, 'only the shared glass default is declared');
+  assert.match(css, /^body\{[^}]*--glass:#05060a/m);
+  assert.ok(!/--(play|cue)[a-z0-9-]*\s*:/.test(css));
   for (const { id } of THEMES.filter(t => t.id !== 'daylight')) {
     const t = tokens(id);
-    assert.deepEqual([t.a, t.b, t.c, t.d], ['#d2fa69', '#64d8fa', '#ffbc70', '#c6a0ff'], id + ' keeps the deck identity colors');
+    assert.deepEqual([t.a, t.b, t.c, t.d], ['#22d3ee', '#ff4d8d', '#ffb020', '#a78bfa'], id + ' keeps the deck identity colors');
   }
 });
 
@@ -70,7 +72,7 @@ test('component format v2 replaces free styling with named themes', () => {
   const schema = JSON.stringify(COMPONENT_SCHEMA);
   for (const word of ['accent', 'surface', 'radius', 'density', 'fontScale']) assert.ok(!schema.includes(word), word + ' is no longer configurable');
   const kit = creatorKit();
-  assert.match(kit.files['AGENTS.md'], /Orchid/); assert.match(kit.files['component.schema.json'], /daylight/);
+  assert.match(kit.files['AGENTS.md'], /Studio/); assert.match(kit.files['component.schema.json'], /daylight/);
 });
 
 test('version 1 designs and saved canvases convert to themes with a notice and keep their layout', () => {
@@ -115,19 +117,19 @@ test('component sizes never drop below what fits; themes apply per component or 
     store.dispatchWorkspace({ type: 'item', id: item.id, patch: { width: 320, height: 160 } });
   }
   for (const item of store.getWorkspace().snapshot.items) assert.deepEqual([item.width, item.height], minSize(item.design.kind));
-  store.dispatchWorkspace({ type: 'theme', id: items[0].id, value: 'midnight' });
-  assert.equal(store.getWorkspace().snapshot.items[0].design.theme, 'midnight');
+  store.dispatchWorkspace({ type: 'theme', id: items[0].id, value: 'ember' });
+  assert.equal(store.getWorkspace().snapshot.items[0].design.theme, 'ember');
   assert.equal(store.getWorkspace().snapshot.items[1].design.theme, 'app');
-  store.dispatchWorkspace({ type: 'theme-all', value: 'orchid' });
-  assert.ok(store.getWorkspace().snapshot.items.every(i => i.design.theme === 'orchid'));
+  store.dispatchWorkspace({ type: 'theme-all', value: 'daylight' });
+  assert.ok(store.getWorkspace().snapshot.items.every(i => i.design.theme === 'daylight'));
   assert.throws(() => store.dispatchWorkspace({ type: 'theme-all', value: 'neon' }), /theme/);
-  assert.ok(store.getWorkspace().snapshot.items.every(i => i.design.theme === 'orchid'), 'an invalid theme changes nothing');
+  assert.ok(store.getWorkspace().snapshot.items.every(i => i.design.theme === 'daylight'), 'an invalid theme changes nothing');
   const frozen = JSON.stringify(store.getWorkspace());
   store.dispatchWorkspace({ type: 'style', id: items[0].id, patch: { accent: '#ffffff' } });
   assert.equal(JSON.stringify(store.getWorkspace()), frozen, 'the old free-style action no longer exists');
-  for (const layout of LAYOUTS) for (const item of workspaceStarter(layout.id).items) { const [w, h] = minSize(item.design.kind); assert.ok(item.width >= w && item.height >= h, layout.id + ' ' + item.design.kind); }
+  for (const id of ['console', 'duo']) for (const item of workspaceStarter(id).items) { const [w, h] = minSize(item.design.kind); assert.ok(item.width >= w && item.height >= h, id + ' ' + item.design.kind); }
   assert.equal(reduceWorkspace(createWorkspace(), { type: 'unknown' }).snapshot.items.length, 0);
-  validateWorkspace(workspaceStarter('studio-sync'));
+  validateWorkspace(workspaceStarter('console'));
 });
 
 test('stylesheets carry no per-widget color variables or leftover free-style controls', async () => {

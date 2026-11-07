@@ -1,4 +1,4 @@
-import { DECK_IDS, LAYOUTS, THEMES } from './catalog.js';
+import { DECK_IDS, THEMES } from './catalog.js';
 
 // The same schema and validator are shipped in the offline agent creator kit.
 export const COMPONENT_KINDS=['deck','mixer','browser','waveform','cues','crossfader','effects'];
@@ -55,13 +55,43 @@ export function upgradeWorkspace(value) {
  return {...value,version:2,items:Array.isArray(value.items)?value.items.map(item=>item&&typeof item==='object'?{...item,design:upgradeComponent(item.design)}:item):value.items};
 }
 /** Smallest size at which each component's whole face fits without inner scrolling. */
-export const MIN_SIZE={deck:[520,560],mixer:[400,660],browser:[560,660],waveform:[420,200],cues:[520,170],crossfader:[360,220],effects:[580,200]};
+export const MIN_SIZE={deck:[480,380],mixer:[460,420],browser:[560,420],waveform:[420,160],cues:[440,170],crossfader:[360,160],effects:[580,200]};
 export const minSize=kind=>MIN_SIZE[kind]||[320,160];
 export function fitItem(item) {
  const [width,height]=minSize(item.design.kind);
  item.width=Math.max(item.width,width);item.height=Math.max(item.height,height);return item;
 }
 function fitWorkspace(snapshot) {snapshot.items.forEach(fitItem);return snapshot;}
+/** Item bounds shared with the schema above: left 0..2400, top 0..4800, width/height up to 1600. */
+export const ITEM_BOUNDS={x:2400,y:4800,size:1600};
+/** Eight resize handles: four sides and four corners. Each name lists the compass edges the handle moves. */
+export const RESIZE_HANDLES=['n','ne','e','se','s','sw','w','nw'];
+export const GRID_UNIT=20;
+function resizeAxis(start,length,delta,{low,high,min,maxStart,grid}) {
+ if(high){
+  const end=Math.min(Math.max(Math.round((start+length+delta)/grid)*grid,start+min),start+ITEM_BOUNDS.size);
+  return [start,end-start];
+ }
+ if(low){
+  const end=start+length,floor=Math.max(0,end-ITEM_BOUNDS.size),ceiling=Math.max(floor,Math.min(maxStart,end-min));
+  const edge=Math.min(Math.max(Math.round((start+delta)/grid)*grid,floor),ceiling);
+  return [edge,end-edge];
+ }
+ return [start,length];
+}
+/**
+ * Pure geometry for one resize gesture. `dx`/`dy` are the total pointer travel since the gesture began (never
+ * incremental, so nothing drifts), and the edge opposite the grabbed side or corner stays exactly where it was. The
+ * grabbed edge snaps to the grid, then is held to the component's smallest whole-face size, the 1600 px maximum and
+ * the canvas origin; at a limit the dragged edge stops and the anchored edge does not move. Returns only layout data.
+ */
+export function resizeItem(item,handle,dx,dy,{snap=true}={}) {
+ if(!RESIZE_HANDLES.includes(handle))throw Error('Unknown resize handle');
+ const [minWidth,minHeight]=minSize(item.design.kind),grid=snap?GRID_UNIT:1;
+ const [x,width]=resizeAxis(item.x,item.width,dx,{low:handle.includes('w'),high:handle.includes('e'),min:minWidth,maxStart:ITEM_BOUNDS.x,grid});
+ const [y,height]=resizeAxis(item.y,item.height,dy,{low:handle.includes('n'),high:handle.includes('s'),min:minHeight,maxStart:ITEM_BOUNDS.y,grid});
+ return {x,y,width,height};
+}
 export function parseDesignWithNotice(text) {
  if(typeof text!=='string'||new TextEncoder().encode(text).length>DESIGN_LIMIT)throw Error('$: design exceeds 256 KiB');
  let value;try{value=JSON.parse(text);}catch{throw Error('$: invalid JSON');}
@@ -88,22 +118,23 @@ export function restoreWorkspaceWithNotice(text) {
  return {workspace,upgraded};
 }
 export function restoreWorkspace(text) {return restoreWorkspaceWithNotice(text).workspace;}
-const wsSizes={deck:[560,560],mixer:[540,660],browser:[780,660],waveform:[560,200],cues:[520,180],crossfader:[420,220],effects:[660,200]};
+const wsSizes={deck:[500,390],mixer:[500,440],browser:[760,440],waveform:[560,170],cues:[480,180],crossfader:[420,160],effects:[660,200]};
 function appendDesign(snapshot,design) {
  const index=snapshot.items.length;let next=1;
  while(snapshot.items.some(item=>item.id==='item-'+next))next++;
  const [width,height]=wsSizes[design.kind];
- snapshot.items.push({id:'item-'+next,design:structuredClone(design),x:index%3*820,y:Math.floor(index/3)*660,width,height});
+ snapshot.items.push({id:'item-'+next,design:structuredClone(design),x:index%3*820,y:Math.floor(index/3)*460,width,height});
 }
-export function workspaceStarter(layoutId) {
- if(!LAYOUTS.some(layout=>layout.id===layoutId))throw Error('Unknown starter preset');
- const snapshot=createWorkspace().snapshot;snapshot.name=LAYOUTS.find(layout=>layout.id===layoutId).name+' canvas';
- const two=layoutId.startsWith('signal'),linear=layoutId==='studio-linear';
- const ids=two?['A','B']:DECK_IDS;
- ids.forEach((id,i)=>{appendDesign(snapshot,createComponent('deck',id));const item=snapshot.items.at(-1);item.x=linear?0:i%2*580;item.y=linear?i*580:Math.floor(i/2)*580;item.width=560;});
- appendDesign(snapshot,createComponent('mixer'));Object.assign(snapshot.items.at(-1),{x:1160,y:0,width:520,height:680});
- appendDesign(snapshot,createComponent('browser'));Object.assign(snapshot.items.at(-1),{x:linear?580:0,y:linear?720:two?600:1180,width:1120,height:660});
- if(layoutId==='studio-sync'){appendDesign(snapshot,createComponent('waveform'));Object.assign(snapshot.items.at(-1),{x:1160,y:700,width:520,height:200});}
+export const STARTERS=Object.freeze([{id:'console',name:'Console'},{id:'duo',name:'Two decks'}]);
+export function workspaceStarter(starterId) {
+ const starter=STARTERS.find(entry=>entry.id===starterId);
+ if(!starter)throw Error('Unknown starter preset');
+ const snapshot=createWorkspace().snapshot;snapshot.name=starter.name+' canvas';
+ const duo=starterId==='duo',ids=duo?['A','B']:DECK_IDS;
+ ids.forEach((id,i)=>{appendDesign(snapshot,createComponent('deck',id));Object.assign(snapshot.items.at(-1),{x:i%2*520,y:Math.floor(i/2)*410,width:500,height:390});});
+ appendDesign(snapshot,createComponent('mixer'));Object.assign(snapshot.items.at(-1),{x:1040,y:0,width:500,height:440});
+ appendDesign(snapshot,createComponent('browser'));Object.assign(snapshot.items.at(-1),{x:0,y:duo?410:820,width:1540,height:440});
+ if(!duo){appendDesign(snapshot,createComponent('crossfader'));Object.assign(snapshot.items.at(-1),{x:1040,y:460,width:500,height:160});}
  return validateWorkspace(fitWorkspace(snapshot));
 }
 /** Pure presentation transitions. Never contains or changes track IDs, transport, or music. */
@@ -135,11 +166,11 @@ export function reduceWorkspace(state,action) {
  if(JSON.stringify(next).length>1048576)throw Error('Workspace storage exceeds 1 MiB');
  return next;
 }
-export const CREATOR_CAPABILITIES={version:1,engineDecks:DECK_IDS,componentKinds:COMPONENT_KINDS,native:['local-file import','play','pause','seek','manual cues','channel volume','A/B crossfader'],unavailable:['EQ','FX','loops','sync','pitch/time stretching','meters','headphone routing','beat/key analysis'],boundary:'Presentation only. Removing a view never unloads audio. Browser-only previews have no audio. No scripts, raw CSS/HTML, URLs, filesystem paths or new command bindings.'};
+export const CREATOR_CAPABILITIES={version:1,engineDecks:DECK_IDS,componentKinds:COMPONENT_KINDS,native:['local-file import','play','pause','seek','manual cues','channel volume','A/B crossfader','channel gain','3-band EQ','sweep filter'],unavailable:['FX','loops','sync','pitch/time stretching','meters','headphone routing','beat/key analysis'],boundary:'Presentation only. Removing a view never unloads audio. Browser-only previews have no audio. No scripts, raw CSS/HTML, URLs, filesystem paths or new command bindings.'};
 export function creatorKit(component=createComponent()) {
  const example=validateComponent(component);
  const schemas={component:COMPONENT_SCHEMA,workspace:WORKSPACE_SCHEMA};
- const instructions=`# DeckCraft component creator\n\nThis kit matches component format version 2. Edit component.json, not application source. Presentation only: do not add functionality or invent fields. The deck property binds existing controls to A/B/C/D. Mixer always shows all four channels; browser uses the shared load target.\n\nChoose one theme from the schema's theme list (app follows the application theme; the others are Graphite, Midnight, Ember, Orchid and Daylight). Colors, corner radius, type scale and density are not configurable, so do not add them. Keep boolean parts and all required fields. Version 1 files are still accepted and converted to a theme. No executable code, HTML, CSS, URLs, music or paths. Component size/position belong to workspace items, not component designs.\n\nRun: node validate.mjs component.json\nImport the result using Canvas → AI creator kit → paste/upload → Validate & preview → Add component. A workspace import replaces only the canvas, not playback; review before applying. Preview data is synthetic and controls are inert. Resize and inspect the live component in Edit mode, then lock Perform mode.\n\nSupported kinds: ${COMPONENT_KINDS.join(', ')}. Effects are disabled placeholders, not processors. Browser-only builds do not play music. Native capabilities and unavailable features are in capabilities.json. Do not claim audible EQ/FX or implement custom DSP in this format.\n\nA kit contains only design data. Return component.json, not the whole kit. The schemas, validator and examples ship together so agents need not reverse-engineer DeckCraft.\n`;
+ const instructions=`# DeckCraft component creator\n\nThis kit matches component format version 2. Edit component.json, not application source. Presentation only: do not add functionality or invent fields. The deck property binds existing controls to A/B/C/D. Mixer always shows all four channels; browser uses the shared load target.\n\nChoose one theme from the schema's theme list (app follows the application theme; the others are ${THEMES.map(theme=>theme.name).join(', ')}). Colors, corner radius, type scale and density are not configurable, so do not add them. Keep boolean parts and all required fields. Version 1 files are still accepted and converted to a theme. No executable code, HTML, CSS, URLs, music or paths. Component size/position belong to workspace items, not component designs.\n\nRun: node validate.mjs component.json\nImport the result using Canvas → AI creator kit → paste/upload → Validate & preview → Add component. A workspace import replaces only the canvas, not playback; review before applying. Preview data is synthetic and controls are inert. Resize and inspect the live component in Edit mode, then lock Perform mode.\n\nSupported kinds: ${COMPONENT_KINDS.join(', ')}. Effects are disabled placeholders, not processors. Browser-only builds do not play music. Native capabilities and unavailable features are in capabilities.json. Gain, three-band EQ and the sweep filter are existing native mixer controls; do not claim audible FX or implement custom DSP in this format.\n\nA kit contains only design data. Return component.json, not the whole kit. The schemas, validator and examples ship together so agents need not reverse-engineer DeckCraft.\n`;
  const validator=`import {readFile} from 'node:fs/promises';\nconst schemas=${JSON.stringify(schemas)};\nconst validateDesignSchema=${validateDesignSchema.toString()};\ntry { const text=await readFile(process.argv[2],'utf8');if(Buffer.byteLength(text)>${DESIGN_LIMIT})throw Error('Design exceeds 256 KiB');const value=JSON.parse(text);const schema=value.format==='deckcraft.component'?schemas.component:value.format==='deckcraft.workspace'?schemas.workspace:null;if(!schema)throw Error('Unknown format');validateDesignSchema(value,schema);if(value.items&&new Set(value.items.map(i=>i.id)).size!==value.items.length)throw Error('Duplicate item IDs');console.log(JSON.stringify({ok:true,format:value.format,version:value.version})); } catch(error){console.error(JSON.stringify({ok:false,error:error.message}));process.exitCode=1;}\n`;
  return {format:'deckcraft.creator-kit',version:1,files:{'AGENTS.md':instructions,'component.json':JSON.stringify(example,null,2),'component.schema.json':JSON.stringify(COMPONENT_SCHEMA,null,2),'workspace.schema.json':JSON.stringify(WORKSPACE_SCHEMA,null,2),'capabilities.json':JSON.stringify(CREATOR_CAPABILITIES,null,2),'validate.mjs':validator,'examples.json':JSON.stringify(COMPONENT_KINDS.map(kind=>createComponent(kind)),null,2)}};
 }

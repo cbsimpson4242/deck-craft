@@ -11,7 +11,7 @@
   "scripts": {
     "test": "node --test tests/*.test.js",
     "build": "node scripts/build.mjs",
-    "test:browser": "node scripts/browser-test.mjs",
+    "test:browser": "node scripts/browser-test.mjs && node scripts/header-browser-test.mjs",
     "test:canvas": "node scripts/canvas-browser-test.mjs",
     "component": "node scripts/component-tool.mjs",
     "build:native": "node scripts/build-native.mjs",

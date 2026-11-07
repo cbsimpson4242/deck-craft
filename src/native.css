@@ -1,165 +1,61 @@
-.native-desktop .native-audio-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 14px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-  color: var(--muted);
-  font:
-    10px/1.5 ui-monospace,
-    monospace;
-  min-width: 0;
-}
-.native-audio-state {
-  flex: 1;
-  min-width: 0;
-}
-.native-audio-bar button {
-  border: 1px solid color-mix(in srgb,var(--faint) 55%,var(--line));
-  background: var(--raised);
-  color: var(--ink);
-  border-radius: 3px;
-  padding: 6px 10px;
-  white-space: nowrap;
-  font: inherit;
-}
-.native-audio-bar .native-import {
-  border-color: var(--a);
-  background: var(--a);
-  color: #13190a;
-  font-weight: 650;
-}
-.native-desktop button:disabled,
-.native-desktop input:disabled {
-  opacity: 0.32;
-  cursor: not-allowed;
-}
-.native-desktop .vu i {
-  height: calc(var(--meter, 0) * 100%) !important;
-  transition: height 90ms linear;
-  animation: none !important;
-}
-.native-desktop .vu { opacity: 0.35; }
-.native-desktop .vu[data-live="true"] { opacity: 1; }
-.native-desktop .vu i[data-clip="true"] { background: #ed6565; }
-.native-desktop .precision-ruler {
-  font-size: 9px;
-  letter-spacing: 0.08em;
-  align-items: center;
-  justify-content: center;
-}
-.native-desktop .linear-phrase {
-  font-size: 9px;
-}
-.native-desktop .engine-label {
-  color: var(--a);
-}
-.native-desktop .native-audio-bar [hidden] {
-  display: none;
-}
-.native-desktop .footer-info {
-  white-space: nowrap;
-}
-.native-desktop .local-library {
-  display: flex;
-  min-width: 0;
-  width: 100%;
-}
-.native-desktop .local-library .library-main {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-  width: 100%;
-}
-.native-desktop .local-library .library-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  height: auto;
-  gap: 10px;
-  padding: 12px;
-}
-.native-desktop .local-library .library-title { flex: 1 1 200px; min-width: 0; flex-wrap: wrap; }
-.native-desktop .local-library .searchbox { flex: 1 1 170px; min-width: 120px; width: auto; }
-.native-desktop .local-library .searchbox input { min-width: 0; width: 100%; }
-.library-imports, .library-navigation, .library-selection {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--line);
-}
-.local-library label { min-width: 0; }
-.library-navigation label, .library-selection label { display: flex; align-items: center; gap: 6px; }
-.library-navigation label:first-child { flex: 1 1 190px; }
-.local-library select, .local-library .collection-name {
-  background: var(--bg);
-  color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  min-height: 34px;
-  min-width: 0;
-  max-width: 100%;
-  padding: 5px 7px;
-}
-.library-navigation select { width: 100%; }
-.library-selection select { max-width: 175px; }
-.library-imports button, .library-navigation button, .library-selection button, .playlist-order button, .collection-dialog button {
-  min-height: 34px;
-  padding: 6px 9px;
-  border: 1px solid var(--line);
-  background: var(--raised);
-  border-radius: 3px;
-  gap: 6px;
-}
-.library-imports button:first-child { border-color: color-mix(in srgb,var(--faint) 55%,var(--line)); color: var(--accent); }
-.library-feedback { padding: 8px 12px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
-.native-desktop .local-library .load-choice { display: flex; flex-wrap: wrap; height: auto; gap: 8px; padding: 8px 12px; }
-.native-desktop .local-library .table-wrap { overflow: auto; min-height: 130px; max-height: 460px; }
-.native-desktop .local-library table { width: 100%; min-width: 360px; table-layout: fixed; }
-.native-desktop .local-library td, .native-desktop .local-library th { padding: 8px 6px; }
-.native-desktop .local-library th:first-child { width: 42px; }
-.native-desktop .local-library th:nth-child(3) { width: 36px; }
-.native-desktop .local-library th.time-cell { width: 54px; }
-.native-desktop .local-library th:last-child { width: 104px; }
-.native-desktop .local-library .name-cell { max-width: none; }
-.native-desktop .local-library .name-cell div { min-width: 0; }
-.native-desktop .local-library .name-cell b, .native-desktop .local-library .name-cell span { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.native-desktop .local-library .load { min-width: 24px; }
-.native-desktop .local-library .load-cell { white-space: nowrap; width: auto; }
-.native-desktop .local-library .time-cell { display: table-cell; }
-.library-check input, .library-selection input { accent-color: var(--accent); width: 18px; height: 18px; }
-.playlist-order { display: inline-flex; gap: 3px; margin-left: 4px; }
-.playlist-order button { min-width: 26px; padding: 6px; }
-.local-library [hidden], .native-desktop .local-library tr[hidden] { display: none !important; }
-.collection-dialog { max-width: min(460px, calc(100vw - 32px)); padding: 22px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
-.collection-dialog::backdrop { background: #000a; }
-.collection-dialog label { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
-.collection-dialog p { color: var(--muted); }
-.collection-dialog > div { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
-@media (max-width: 600px) {
-  .native-desktop .native-audio-bar {
-    padding: 7px 10px;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-  .native-desktop .native-audio-state {
-    flex-basis: 100%;
-  }
-  .native-desktop .statusbar > span:first-child {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 70%;
-  }
-}
+/* Native desktop chrome: audio status bar, local-library controls and collection dialogs.
+   Presentation only; these controls render in the desktop app and are exercised by the desktop test lane. */
+.native-desktop .native-audio-bar{display:flex;align-items:center;gap:12px;flex:none;min-width:0;padding:5px 16px;background:var(--panel);border-bottom:1px solid var(--line);color:var(--muted);font:500 11px/1.5 var(--font)}
+.native-audio-state{flex:1;min-width:0}
+.native-audio-bar button{padding:6px 11px;border:1px solid var(--line2);border-radius:8px;background:var(--raised);color:var(--ink);white-space:nowrap;font:600 12px var(--font);transition:background-color .14s,border-color .14s,color .14s}
+.native-audio-bar button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
 
-/* Readable local library: whole-row collection picker, no orphaned toolbar button, a header that fits. */
-.local-library .library-toolbar .library-title { flex: 1 1 100%; }
-.local-library .library-toolbar .searchbox { flex: 1 1 140px; min-width: 0; }
-.local-library .library-toolbar .view-toggle { flex: 0 0 auto; }
-.library-navigation label:first-child { flex: 1 1 100%; }
-.library-navigation label:first-child select { flex: 1; min-width: 0; }
-body.refined .library.local-library th:first-child, body.refined.native-desktop .library.local-library th:first-child { width: 58px; }
+
+.native-audio-bar [hidden],.native-audio-bar[hidden]{display:none}
+.native-desktop button:disabled,.native-desktop input:disabled{opacity:.34;cursor:not-allowed}
+.native-desktop .vu{opacity:1}
+.native-desktop .engine-label{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--line2))}
+.native-desktop .engine-label::before{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.native-desktop .footer-info{white-space:nowrap}
+
+/* Local library: the same table, with import, collection and selection bars. */
+.local-library .library-main{width:100%}
+.local-library .library-toolbar{flex-wrap:wrap}
+.local-library .library-title{flex:1 1 200px;min-width:0;flex-wrap:wrap}
+.local-library .searchbox{flex:1 1 170px;min-width:120px;width:auto}
+.library-imports,.library-navigation,.library-selection{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid var(--line);flex:none}
+.local-library label{min-width:0}
+.library-navigation label,.library-selection label{display:flex;align-items:center;gap:6px;font:500 12px/1.2 var(--font);color:var(--muted)}
+.library-navigation label:first-child{flex:1 1 190px}
+.library-navigation label:first-child select{flex:1;min-width:0}
+.local-library select,.local-library .collection-name{min-height:32px;min-width:0;max-width:100%;padding:4px 8px;border:1px solid var(--line2);border-radius:8px;background:var(--well);color:var(--ink)}
+.library-selection select{max-width:175px}
+.library-imports button,.library-navigation button,.library-selection button,.playlist-order button,.collection-dialog button{min-height:32px;padding:6px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--raised);font:600 12px/1 var(--font);color:var(--ink);gap:6px;transition:background-color .14s,border-color .14s,color .14s}
+.library-imports button{display:inline-flex;align-items:center}
+.library-imports svg{width:14px;height:14px}
+.library-imports button:first-child{border-color:color-mix(in srgb,var(--accent) 50%,var(--line2));color:var(--accent)}
+.library-imports button:hover:not(:disabled),.library-navigation button:hover:not(:disabled),.library-selection button:hover:not(:disabled),.playlist-order button:hover:not(:disabled),.collection-dialog button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.library-feedback{padding:9px 14px;color:var(--muted);font-size:11px;line-height:1.45;overflow-wrap:anywhere;flex:none}
+.local-library .library-feedback:empty{padding:0}
+.native-desktop .local-library .load-choice{flex-wrap:wrap;height:auto;gap:8px}
+.native-desktop .local-library table{min-width:360px;table-layout:fixed}
+.native-desktop .local-library td,.native-desktop .local-library th{padding:8px 6px}
+.native-desktop .local-library th:first-child{width:58px}
+.native-desktop .local-library th:nth-child(3){width:48px}
+.native-desktop .local-library th.time-cell{width:58px}
+.native-desktop .local-library th:last-child{width:112px}
+.native-desktop .local-library .name-cell{display:table-cell;max-width:none;height:auto}
+.native-desktop .local-library .name-cell div{min-width:0}
+.native-desktop .local-library .name-cell b,.native-desktop .local-library .name-cell span{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.native-desktop .local-library .load-cell{white-space:nowrap;width:auto}
+.native-desktop .local-library .time-cell{display:table-cell}
+.library-check input,.library-selection input{accent-color:var(--accent);width:18px;height:18px}
+.playlist-order{display:inline-flex;gap:3px;margin-left:4px}
+.playlist-order button{min-width:26px;padding:6px}
+.local-library [hidden],.native-desktop .local-library tr[hidden]{display:none!important}
+.collection-dialog{max-width:min(460px,calc(100vw - 32px));padding:22px}
+.collection-dialog label{display:flex;flex-direction:column;gap:8px;margin:14px 0}
+.collection-dialog p{color:var(--muted)}
+.collection-dialog>div{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.local-library .collection-name:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+@media (max-width:600px){
+  .native-desktop .native-audio-bar{padding:7px 10px;gap:6px;flex-wrap:wrap}
+  .native-desktop .native-audio-state{flex-basis:100%}
+  .native-desktop .statusbar>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%}
+}
+@media (prefers-reduced-motion:reduce){.native-audio-bar button,.library-imports button,.library-navigation button,.library-selection button,.playlist-order button,.collection-dialog button{transition:none}}

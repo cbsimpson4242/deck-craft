@@ -12,6 +12,7 @@ Native source, virtual output and controller-host desktop tests are not target-m
 
 - `native/src/main.rs` owns native deck/transport acknowledgements, generations and source-clock state.
 - `native/src/stream.rs` keeps file/decode/seek work off the device-facing PCM iterator using bounded SPSC buffers; retain off-callback resource retirement.
+- `native/src/dsp.rs` owns the per-deck gain/EQ/filter/fader strip that wraps that iterator: no allocation, locks or I/O after construction, flat neutral EQ magnitude and exact sweep-filter bypass at knob 50, smoothed parameters, and never DSP on the decode worker. `src/mixer.js` only labels the same mapping; keep the golden vectors in `tests/mixer-map.test.js` and `dsp.rs` identical.
 - `desktop/main.cjs`, `policy.cjs`, `preload.cjs` own the local bridge and native selection. Keep sandbox/context isolation, strict frame/command validation and no renderer Node or arbitrary-path API.
 - `desktop/library.cjs` owns the private selected-file registry; paths never enter renderer metadata or public artifacts.
 - `desktop/audio-client.cjs` owns the child, framing, native generation/sequence, watchdog, sanitized errors and operational-only environment.

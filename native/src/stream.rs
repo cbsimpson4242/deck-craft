@@ -255,4 +255,55 @@ mod tests {
         assert_eq!(source.next(), Some(0.75));
         assert_eq!(state.position_frames.load(Ordering::Relaxed), 1);
     }
+
+    fn stream_state() -> Arc<StreamState> {
+        Arc::new(StreamState {
+            position_frames: AtomicU64::new(0),
+            underrun_samples: AtomicU64::new(0),
+            finished: AtomicBool::new(false),
+            failed: AtomicBool::new(false),
+            consumer_dropped: AtomicBool::new(false),
+            release_producer: AtomicBool::new(false),
+        })
+    }
+    fn pcm_source(consumer: Consumer<f32>, state: &Arc<StreamState>) -> PcmSource {
+        PcmSource {
+            consumer: Some(consumer),
+            state: state.clone(),
+            channels: ChannelCount::new(2).unwrap(),
+            rate: SampleRate::new(48000).unwrap(),
+            duration: Duration::from_secs(1),
+            consumed: 0,
+            offset: 0,
+            silence_remaining: 0,
+        }
+    }
+    #[test]
+    fn channel_strip_leaves_position_underrun_accounting_and_retirement_to_the_stream() {
+        use crate::dsp::{DeckControls, Knob, Strip};
+        let (mut producer, consumer) = RingBuffer::<f32>::new(4096);
+        let state = stream_state();
+        let controls = DeckControls::new(0.5);
+        controls.set(Knob::Gain, 100.0);
+        let mut strip = Strip::new(pcm_source(consumer, &state), controls);
+        // Underrun: silence for whole frames, position untouched, counted by the stream.
+        assert_eq!(strip.next(), Some(0.0));
+        assert_eq!(strip.next(), Some(0.0));
+        assert_eq!(state.position_frames.load(Ordering::Relaxed), 0);
+        assert_eq!(state.underrun_samples.load(Ordering::Relaxed), 2);
+        for _ in 0..400 {
+            producer.push(0.1).unwrap();
+            producer.push(0.1).unwrap();
+        }
+        let out: Vec<f32> = (0..800).map(|_| strip.next().unwrap()).collect();
+        assert_eq!(state.position_frames.load(Ordering::Relaxed), 400, "media position still counts consumed frames");
+        // 0.1 x 0.5 fader x +12 dB, after the 2 ms start fade.
+        assert!(out.iter().all(|v| v.is_finite()&&v.abs()<0.5),"strip processes real PCM while the stream owns frame accounting");
+        assert!(!state.consumer_dropped.load(Ordering::Acquire));
+        // Dropping the strip drops the PCM source: the consumer is released first, so the ring is
+        // retired off the device thread exactly as before.
+        drop(strip);
+        assert!(state.consumer_dropped.load(Ordering::Acquire));
+        drop(producer);
+    }
 }

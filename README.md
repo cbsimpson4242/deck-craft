@@ -4,9 +4,9 @@
 
 An open-source DJ application built around professional workflows, reliable performance, and community ownership.
 
-**Current milestone: the approved reference-style deck face across every layout, over the customizable component canvas and Linux native desktop preview.** Assemble and style existing decks, mixer, browser and smaller parts; save reusable components/workspaces and export a self-contained AI-agent creator kit. Browse local files/folders, build crates and ordered playlists, and play/pause/seek through the separate Rust audio engine. All five approved layouts remain available over the same four-deck session.
+**Current milestone: a ground-up DJ-software console redesign over the customizable component canvas and Linux native desktop preview.** One console shows four deck waveform lanes, two deck panels, a four-channel mixer and the collection; **Build** restyles the component canvas with the same look. Browse local files/folders, build crates and ordered playlists, and play/pause/seek through the separate Rust audio engine. Native channel strips now process gain, three-band EQ and sweep filters, alongside levels and the A/B crossfader.
 
-**Omarchy is the first target:** user-local installation and native Wayland window launch have been verified on the target desktop, with the native engine reporting audio ready. Full file-chooser/portal interaction, physical audible output and hardware latency still need acceptance there. This is not yet a Serato/Traktor replacement. FX, loops, sync, beat/key detection, time stretching, headphone routing and controller integration are **not implemented**; those controls are disabled in the desktop app.
+**Omarchy is the first target:** user-local installation and native Wayland window launch have been verified on the target desktop, with the native engine reporting audio ready. Full file-chooser/portal interaction, physical audible output and hardware latency still need acceptance there. This is not yet a Serato/Traktor replacement. FX, loops, sync, beat/key detection, time stretching, headphone cue routing and controller integration are **not implemented**; those controls are disabled in the desktop app.
 
 ## Run the native desktop preview
 
@@ -19,7 +19,7 @@ npm run build:desktop
 npm run desktop
 ```
 
-The application opens an ordinary desktop window, not a browser tab. Choose **Add files** (multiple selections) or **Add folder** (including subfolders) to populate your library without changing any deck. Select **Load into** A/B/C/D and use the track's load arrow, then press that deck's **Play**. **Open file → Deck A/B/C/D** remains a shortcut for a single file. Imported files stay on the filesystem you selected; no music is uploaded or copied into this repository. Newly loaded and restored tracks are paused. The desktop library defaults to your local tracks; synthetic demo fixtures have their own non-playable collection.
+The application opens an ordinary desktop window, not a browser tab. Choose **Add files** (multiple selections) or **Add folder** (including subfolders) to populate your library without changing any deck. Select **Load into** A/B/C/D and use the track's load arrow, then press that deck's **Play**. You can instead **drag a local track** from the library onto any deck face or waveform (the console's four waveform lanes, the visible deck panels, and Build's deck and waveform components) to load that deck. A drop is exactly the load arrow's action: the deck stays paused, nothing starts, and a drop on anything else, or from outside the app, does nothing. Demo fixtures in the desktop library cannot be dragged. **Open file → Deck A/B/C/D** remains a shortcut for a single file. Imported files stay on the filesystem you selected; no music is uploaded or copied into this repository. Newly loaded and restored tracks are paused. The desktop library defaults to your local tracks; synthetic demo fixtures have their own non-playable collection.
 
 ### Your music, crates and playlists
 
@@ -27,18 +27,28 @@ The application opens an ordinary desktop window, not a browser tab. Choose **Ad
 - Choose a collection to view its tracks. Rename/delete collections, remove selected membership, or use the playlist's up/down arrows to save a different order. Playlists are preparation lists, **not automatic continuous playback**.
 - Search by filename, or sort by title/duration; playlist order is a separate sort choice. Artist/tag extraction, live folder watching and portable playlist-file export are not implemented.
 - Tracks, collection names/membership/order, selected collection and sort choice survive restart. Deck restoration stays paused. Removing an entry or collection never deletes original music. A selected/loaded/loading track cannot be removed from the library until a different source is loaded into its decks, even when the audio output is unavailable or the engine has reconnected.
-- Audio output status appears above the workspace. A ready engine is not proof of audible speakers: load your own track and verify your system output. Library import/organization also works with an unavailable output device; transport remains disabled. Import still requires the installed native decoder.
+- Audio output status is in **Settings** (cog, top right); a band under the header appears only while output is unavailable. A ready engine is not proof of audible speakers: load your own track and verify your system output. Library import/organization also works with an unavailable output device; transport remains disabled. Import still requires the installed native decoder.
 - Each import is bounded to 1,000 candidate audio files, 20,000 traversed entries and bounded folder depth. Symlinks are skipped. A summary reports duplicates, skipped/failed files and truncated batches; use smaller folders if the limit is reached. The library supports at most 200 collections and 20,000 total memberships, within the shared persistence budget below. Selection actions operate on up to 1,000 tracks at a time.
 
-### Channel mixer
+### Mixer: gain, EQ and filter (native desktop)
 
-Each channel has native gain trim, High/Mid/Low EQ and a level fader. EQ 50 is neutral, 100 is +6 dB, and 0 fully kills that band's contribution. Click the HI, MID or LOW label to kill it; click again to restore its previous setting. Moving a killed knob restores it manually. These settings and kill memories survive restart; playback always restores paused.
+Every deck A–D has GAIN, HI, MID, LOW and FILTER knobs in the console mixer and Build mixer components, plus the channel level fader; each channel can follow L, R or THRU at the crossfader. Knobs are saved as 0–100 with **50 = neutral**; the real values are shown on hover/focus and spoken to screen readers. Double-click a knob (or press Delete/Backspace on it) to return it to 50.
 
-The EQ uses 24 dB/octave Linkwitz-Riley crossovers at 250 Hz and 2.5 kHz, with phase alignment for flat magnitude at neutral. Adjacent bands overlap at the crossovers: killing one band removes that band's output, not all energy at every nearby frequency. Killing all three produces digital silence after a short click-reducing ramp.
+| Knob | 0 | 50 | 100 |
+| --- | --- | --- | --- |
+| GAIN | −12 dB | 0 dB | +12 dB |
+| HI (above 2.5 kHz crossover) | KILL | 0 dB | +12 dB |
+| MID (250 Hz–2.5 kHz crossovers) | KILL | 0 dB | +12 dB |
+| LOW (below 250 Hz crossover) | KILL | 0 dB | +12 dB |
+| FILTER (12 dB/octave, Q 0.8) | low-pass at 100 Hz | **off (exact bypass)** | high-pass at 12 kHz |
 
-Channel meters display actual native stereo peaks after trim, EQ and the channel fader, before the crossfader. They remain active for a playing channel faded out by the crossfader, and go dark on pause, end or disconnection. These are peak meters, not calibrated analog VU/loudness measurements.
+Click HI, MID or LOW to kill that band, then click again to restore its previous knob value. Zero removes that band's contribution exactly; all three kills settle to digital silence. The phase-aligned 24 dB/octave Linkwitz-Riley crossover split at 250 Hz / 2.5 kHz has flat magnitude at neutral, with phase rotation. Adjacent bands overlap near the crossovers, so a single kill is not a brick-wall frequency filter. Nonzero EQ retains the existing nominal −24…+12 dB taper; gain retains −12…+12 dB.
 
-Use each channel's **L / R / THRU** buttons to follow the left side, right side, or bypass the crossfader. A starts on L, B on R; C/D keep their original THRU routing until assigned. All four channels can follow either side. Assignments are shared across layouts and saved with the session.
+The sweep filter remains a low-pass from 20 kHz→100 Hz below centre and a high-pass from 20 Hz→12 kHz above centre, with exact bypass at 50. Changes are smoothed. A paused edit snaps on resume; settings survive seek, reload, end/restart, deck pairs and Build. Saved settings and kill memories restore before paused sources.
+
+Native stereo peak meters read after EQ, sweep filter, trim and channel fader, before crossfader/master headroom. A faded-out playing channel still meters; paused, ended and offline channels are silent. These are peak meters, not calibrated analog VU/loudness measurements. Each channel independently selects L, R or THRU; A/B default L/R, C/D keep THRU until assigned. Assignments persist.
+
+The per-deck safety bound and conservative master headroom remain; the four-deck sum is not limited. FX, headphone cue and master EQ/limiter are not implemented. All native mixer controls wait for a connected, restored engine.
 
 The native engine uses Rodio/CPAL and a bounded PCM ring per deck. File reads, decoding and seek preparation happen on workers, not in the device-facing PCM iterator. Transport positions are based on native media frames consumed, not a browser animation timer. A requested 512-frame device buffer is not a measured hardware-latency guarantee.
 
@@ -79,43 +89,53 @@ If a path or its parent has been redirected through an unexpected symlink, or ow
 
 Selected music remains at its original location and is untouched. Private library IDs, session state and preferences are retained by default in the application configuration directory, separate from the installation. For optional, deliberate state deletion, see [removing private user state](docs/NATIVE-DESKTOP.md#deliberately-remove-private-user-state-optional).
 
-## One session, five layouts
+## One session, one console
 
-All five layouts use the selected **Performance console** visual treatment: dark surfaces, larger transport clocks and stable deck identities (A lime, B cyan, C amber, D violet). These colors identify decks; they do not represent frequency analysis or measured signal levels.
+The console has three workspaces in the top bar: **Perform** (four waveform lanes, two deck panels, the mixer and the collection), **Library** (the collection alone) and **Build** (the component canvas). Decks are A·B or C·D on the console; the pair selector in the mixer switches between them, and all four mixer channels and waveform lanes stay visible. Deck identities are cyan A, pink B, amber C and violet D. These colors identify decks; they do not represent frequency analysis or measured signal levels.
 
-Use the **Layout** dropdown:
+Switching workspace, deck pair, pad bank or theme never reloads audio or creates another engine. Theme, loaded local-track IDs, positions and manual cues persist on this device. Sessions saved under the five earlier layouts restore into the console. Restoring a session never starts playback. Missing or changed files produce errors, not silent substitution with a demo track.
 
-- **Signal One** — two decks, track overviews, cue banks and side mixer.
-- **Signal Wide** — expanded overviews and lower mixing dock.
-- **Studio Grid** — collection beside four decks.
-- **Studio Linear** — collection beside four horizontal deck lanes.
-- **Studio Sync** — pair overviews above four decks; the default. Its name does not imply implemented beat synchronization.
+### Compact header and Settings
 
-A layout switch never reloads audio or creates another engine. C/D remain present in two-deck views, with status and quick access. Layout, loaded local-track IDs, positions and manual cues persist on this device. Restoring a session never starts playback. Missing or changed files produce errors, not silent substitution with a demo track.
+The top of every workspace and the custom canvas is one slim bar: the Deck Craft brand with its version, **Perform / Library / Build**, an inline status slot and a **Settings** cog at the right. When Settings is closed nothing else occupies the top; the workspace starts directly under the bar. Settings opens a dialog (click or Enter/Space on the cog) that holds the remaining session controls:
+
+- **Session:** the one-session / four-deck note, native-audio status and **Theme**.
+- **Audio and files** (desktop app): audio status, **Reconnect audio** (only while output is unavailable), **Add files to library** and **Open file → Deck N**.
+- **Tools:** **Effects and cues**.
+
+Esc, the ✕ button or a click outside closes the dialog and returns focus to the cog; Tab stays inside it while it is open. Changing theme keeps the dialog open; opening effects or a file action closes it first. None of this reloads the document, restarts audio or changes musical state. Audio-output errors and save/restore warnings keep their own band, shown only while relevant.
 
 ### Build your own workspace
 
-Choose **Customize** or **Layout → Custom canvas** for an initially empty canvas. Click/drag components from the drawer, move their title bars, resize their corners and use the inspector to change colors, corners, density, scale and deck bindings. Save reusable styled components and workspace presets. **Perform** locks layout editing; **Edit** unlocks it. The original Studio Sync default and all five original views are preserved, with editable starter arrangements also available in the builder.
+Choose **Build** for an initially empty canvas. Click/drag components from the drawer, drag a title bar to move a component and grab **any edge or corner** (all eight directions, with matching resize cursors) to resize it; Alt plus the arrow keys on a focused title bar also resize by one grid step. Select a component to get compact Duplicate, Save and Remove actions. There is no properties inspector: the canvas uses that width, and component internals keep their current content, sections and bindings; **Theme all** restyles every component. Save reusable components and workspace presets. **Perform** locks layout editing; **Edit** unlocks it. The console stays available in Perform, with editable starter arrangements (Console and Two decks) in the builder.
 
 **AI creator kit** exports a design starter, exact versioned schemas, examples, capability reference and standalone validator for any external agent. Paste/open the generated JSON, validate and preview it, then explicitly apply it. This first stage styles existing controls only: no executable plugins or new audio behavior. Effects remain disabled placeholders. Removing a component removes its view, never its playing source. See [custom canvas and agent workflow](docs/CUSTOM-CANVAS.md).
 
 ### Themes
 
-Five themes share one ten-token set (surfaces, borders, three text tones, interface accent): **Graphite** (default), **Midnight**, **Ember**, **Orchid** and **Daylight**. The application theme applies to all five layouts; on the custom canvas each component can follow it or choose its own. The Play button, cue blue, deck identity colors and the dark waveform glass do not change with a theme (Daylight uses darker shades of the same deck hues for legibility). No text renders below 10 px. Free color, radius, scale and density controls no longer exist; version 1 designs and canvases still open and convert to themes. Contrast minimums are enforced by tests.
+Three themes share one set of tokens (surfaces, borders, three text tones, interface accent, deck hues): **Night** (default), **Ember** and **Studio** (light). The application theme applies to the whole console; on the custom canvas each component can follow it or choose its own. The deck identity hues and the dark waveform glass keep their meaning in every theme (Studio uses darker shades of the same hues for legibility). No text renders below 10 px (`python3 scripts/min-text.py`). Free colors, radius, density and scale are not configurable.
 
-### The deck face
+### The deck panel and waveform lanes
 
-Every deck in all five layouts and the custom canvas uses one compact face: track information and clocks, a scrolling detail waveform with a fixed playhead and cue flags, a full-track overview with played-region shading, a vertical tempo slider, the transport/loop row, an eight-position cue bank and a cue-editing strip. Slots 5–8 are reserved and disabled because the app stores four manual cues. Real controls: Play, Cue, four manual cues, seek, loop-length preset values and the existing UI flags. **CUP, FLX, REV, SYNC/master behavior, loop IN/OUT/looping, tempo processing, cue-type editing and controller mapping are visibly disabled or UI-state only.**
+Each deck has a waveform lane (scrolling detail with a fixed playhead and cue flags, plus a seekable full-track overview) and a panel with a progress ring and jog-style platter, transport, a vertical tempo slider and an eight-pad bank. The pad bank shows four manual cues (slots 5–8 are reserved and disabled) or loop lengths; ROLL, SLICER, loop in and loop out stay disabled. Real controls: Play, Cue, four manual cues, seek, the loop-length preset values and the existing UI flags. In the desktop app, Play, seek, cue positions, gain, full-kill EQ, filter, channel levels and crossfader assignment reach the engine. Native peak meters show actual signal; sync, loops, tempo, channel cue and FX remain disabled.
 
-Imported files draw their decoded PCM peaks. Their red/magenta/violet coloring follows **amplitude only** and is a design palette, not low/mid/high-frequency analysis. Synthetic demo decks use a labeled deterministic fixture. A local file without peaks draws no waveform.
+Imported files draw their decoded PCM peaks. Their three nested contours follow **amplitude only** and are tinted by deck; this is a design treatment, not low/mid/high-frequency analysis. Synthetic demo decks use a labeled deterministic fixture. A local file without peaks draws no waveform.
+
+Waveforms are painted for the interval actually on screen, one column per device pixel (up to 4,096 columns per canvas), so zooming never stretches a few thin strokes across gaps. Each time a track is loaded the native engine measures a finer envelope from the same decoded PCM — about 64 bins per second (at most 32,768 bins per track, so very long tracks are coarser), each with an 8-bit **peak** and **RMS** value. The peak sets the outline and the RMS sets the lighter inner core, which keeps heavily compressed masters from reading as a solid block. Digital silence (below about −54 dBFS (half an 8-bit step)) draws nothing, and a single loud bin stays visible at every zoom. The finer envelope is session-only: it is not saved in the private library, so persistence stays at the existing 512 peaks per track. Until it arrives (or if the engine is unavailable) the persisted 512 peaks are drawn, smoothly interpolated for display; at deep zoom that view is coarse because it carries about one value per 0.5 s of a four-minute track.
 
 Imported waveforms are decoded PCM amplitude overviews, not beat grids or frequency analysis. BPM/key show an em dash for local tracks until real analysis exists. Artwork is a generated placeholder, not extracted album art.
+
+Hover a main waveform and **scroll up to zoom in, down to zoom out** (1×–32×). This works on the console lanes and on the custom canvas. Zoom follows the playhead and keeps cue flags and timeline seeking aligned; it does not seek, change tempo or affect audio. The small full-track overview stays unzoomed for navigation. Zoom is a temporary per-deck view preference retained across layout changes in the open app, not saved across restarts. Zoom shows more of the measured peak/RMS bins; it never interpolates new detail or adds analysis. Horizontal trackpad scrolling and Ctrl/Command-wheel gestures are left alone.
+
+Grab a main waveform and drag left to scrub later in the track, or right to scrub earlier. Scrub sensitivity follows that waveform's actual wheel-zoom level; its **+ / −** buttons and keyboard +/− change the same viewport. Focus the waveform to use arrows, Shift/Page Up/Down for larger nudges, or Home/End. Zoomed timelines still support click-to-seek at the drawn position; fixed-playhead details ignore a plain tap. The full-track overview keeps its direct seek control.
+
+A paused pointer drag previews until one seek on release and stays paused. A playing drag coalesces interim seeks, allowing only one request in flight, then sends the final release target. Cancellation, view replacement, focus loss, a newer transport/load action or engine failure discard queued targets and clear the preview; an already submitted seek may have completed. This is seeking, not scratch audio or time stretching. Native consumed frames remain the clock: approximately 60 receipts per second while playing, with slower preparation and idle heartbeats. Cached transport painting runs at animation-frame cadence without refreshing the library or Settings on every receipt; it never extrapolates an audio clock.
 
 The private library is bounded by 10,000 records **and 16 MiB of serialized UTF-8 JSON**, whichever is reached first; waveforms, paths and collections share that budget. Save/restore use the same limits. At capacity, a visible warning reports that imports/metadata were not saved; playback can continue in the current session, while the previous durable library is left intact. Unsaved imports/metadata will not survive restart. Collection edits and library removals roll back in memory if their save fails. Waveform values are not fabricated or reduced to fit the budget. Existing version-1 libraries are supported. Before rolling back to a pre-0.3 app, back up private state separately: older apps do not preserve collection metadata when they next save the library.
 
 ## Browser-only UI and design history
 
-`npm run build` still creates `dist/deck-craft.html`, an offline browser UI with no audio engine. Do not confuse it with the native desktop package. Source UI development can use `python3 -m http.server 4785 --bind 127.0.0.1`; never expose that development file server to a network without a separate review.
+`npm run build` still creates `dist/deck-craft.html`, an offline browser UI with no audio engine. Its demo tracks can be dragged onto decks and waveforms the same way, loading synthetic fixtures (no audio). Do not confuse it with the native desktop package. Source UI development can use `python3 -m http.server 4785 --bind 127.0.0.1`; never expose that development file server to a network without a separate review.
 
 The [Round 03 comparison](designs/round-three/deck-craft-refinements-03.html), [Round 02 exploration](designs/round-two/deck-craft-studies-02.html) and historical [Round 01 comparison](designs/deck-craft-comparison.html) are preserved unchanged.
 

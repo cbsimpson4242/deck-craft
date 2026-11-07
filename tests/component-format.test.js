@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { COMPONENT_KINDS, createComponent, validateComponent, parseDesign, creatorKit, workspaceStarter, validateWorkspace } from '../src/workspace.js';
-import { LAYOUTS, registerLocalTrack } from '../src/catalog.js';
+import { registerLocalTrack } from '../src/catalog.js';
 import { createSession, reduceSession } from '../src/session.js';
 import { renderCanvasContent } from '../src/canvas-view.js';
 import { renderDesignPreview } from '../src/canvas-editor.js';
@@ -23,9 +23,10 @@ test('all kinds round-trip; strict unknown fields, markup, URLs, bounds and vers
  const component=createComponent();component.name='<img onerror=alert(1)>';assert.equal(validateComponent(component).name,component.name,'names are plain escaped text, not executable markup');
 });
 
-test('all five starter canvases use valid designs and no musical session fields',()=>{
- for(const layout of LAYOUTS){const starter=workspaceStarter(layout.id);assert.deepEqual(validateWorkspace(starter),starter);assert.equal(starter.items.filter(i=>i.design.kind==='deck').length,layout.decks);assert.ok(!JSON.stringify(starter).includes('trackId'));}
- const starter=workspaceStarter('signal-one');starter.items.push(structuredClone(starter.items[0]));assert.throws(()=>validateWorkspace(starter),/duplicate/);
+test('starter canvases use valid designs and no musical session fields',()=>{
+ for(const [id,decks] of [['console',4],['duo',2]]){const starter=workspaceStarter(id);assert.deepEqual(validateWorkspace(starter),starter);assert.equal(starter.items.filter(i=>i.design.kind==='deck').length,decks);assert.ok(!JSON.stringify(starter).includes('trackId'));}
+ assert.throws(()=>workspaceStarter('signal-one'),/Unknown starter/);
+ const starter=workspaceStarter('console');starter.items.push(structuredClone(starter.items[0]));assert.throws(()=>validateWorkspace(starter),/duplicate/);
 });
 
 test('a component theme never reaches waveform rendering or track metadata',()=>{
@@ -39,7 +40,7 @@ test('creator deck previews cannot enter native transport painting',()=>{
  const previous=globalThis.document;
  globalThis.document={body:{classList:{add(){}}},querySelector:selector=>selector==='.app'?{}:selector==='.native-audio-bar'?{querySelector:()=>({})}:null,querySelectorAll:selector=>selector==='[data-field="playing"]'&&markup.includes('data-field="playing"')?[{dataset:{},setAttribute(){}}]:[]};
  try {
-  assert.doesNotThrow(()=>NativeSession.prototype.paint.call({store:{get:createSession},status:{ready:false,decks:[]},busy:new Set(),initialized:true,paintClock:NativeSession.prototype.paintClock,paintMeters:NativeSession.prototype.paintMeters}));
+  assert.doesNotThrow(()=>NativeSession.prototype.paint.call({store:{get:createSession},status:{ready:false,decks:[]},busy:new Set(),initialized:true,paintStrip:NativeSession.prototype.paintStrip,paintClock:NativeSession.prototype.paintClock}));
   assert.doesNotMatch(markup,/ data-(?:action|field|deck|wave-deck|track-id)=/);
  } finally {if(previous===undefined)delete globalThis.document;else globalThis.document=previous;}
 });

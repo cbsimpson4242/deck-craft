@@ -10,11 +10,11 @@
 *.log
 *.sqlite*
 *.db
-node_modules/
+node_modules
 dist/
 build/
 release/
-native/target/
+native/target
 native/deck-craft-audio
 coverage/
 __pycache__/
